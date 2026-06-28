@@ -7,6 +7,7 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const morgan = require('morgan');
+const cron = require('node-cron');
 
 const logger = require('./utils/logger');
 const { globalErrorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -41,7 +42,6 @@ function validateEnvironment() {
 
 // ─────────────────────────────────────────────
 // SENTRY — only initialise if a real DSN is provided
-// Never initialise with placeholder values
 // ─────────────────────────────────────────────
 function initialiseSentry() {
   const dsn = process.env.SENTRY_DSN;
@@ -92,29 +92,26 @@ const agentsRoutes       = require('./routes/agents');
 const sessionRoutes      = require('./routes/session');
 const dashboardRoutes    = require('./routes/dashboard');
 const healthRoutes       = require('./routes/health');
+const cameraRoutes       = require('./routes/camera');
 const paystackWebhook    = require('./routes/webhooks/paystack');
 const stripeWebhook      = require('./routes/webhooks/stripe');
 const vapiWebhook        = require('./routes/webhooks/vapi');
 
 // ─────────────────────────────────────────────
-// STUB ROUTERS FOR ROUTES NOT YET BUILT
-// These will be replaced with full implementations
-// in Phase 2 and Phase 3. They allow the server
-// to start cleanly right now.
+// STUB ROUTERS — replaced in Phase 3
 // ─────────────────────────────────────────────
 function stubRouter(routeName) {
   const router = express.Router();
   router.all('*', (req, res) => {
     res.status(503).json({
       success: false,
-      error: `${routeName} is not yet active — coming in Phase 2/3`,
+      error: `${routeName} is not yet active — coming in Phase 3`,
       code: 'NOT_YET_BUILT',
     });
   });
   return router;
 }
 
-const cameraRoutes       = require('./routes/camera');
 const paymentsRoutes     = stubRouter('Payments');
 const bookingsRoutes     = stubRouter('Bookings');
 const providersRoutes    = stubRouter('Providers');
@@ -292,6 +289,190 @@ app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
 // ─────────────────────────────────────────────
+// SCHEDULED CRON JOBS
+// All autonomous background operations
+// ─────────────────────────────────────────────
+function scheduleAllCronJobs() {
+  // ── BELLE: Hourly simulation cleanup at :00 ──
+  cron.schedule('0 * * * *', async () => {
+    logger.info('Belle cleanup: Hourly cron triggered');
+    try {
+      const { deleteExpiredSimulations } = require('./services/belleCleanup.service');
+      await deleteExpiredSimulations();
+    } catch (error) {
+      logger.error('Belle cleanup: Hourly cron failed', { error: error.message });
+    }
+  });
+
+  // ── BELLE: Daily deep storage cleanup at 3:00 AM ──
+  cron.schedule('0 3 * * *', async () => {
+    logger.info('Belle cleanup: Daily deep cleanup triggered');
+    try {
+      const { deepStorageCleanup } = require('./services/belleCleanup.service');
+      await deepStorageCleanup();
+    } catch (error) {
+      logger.error('Belle cleanup: Daily deep cleanup failed', { error: error.message });
+    }
+  });
+
+  // ── NOVA: Daily commission report for Celeste at 8:30 AM ──
+  cron.schedule('30 8 * * *', async () => {
+    logger.info('Nova: Generating daily commission report for Celeste');
+    try {
+      const { generateDailyCommissionReport } = require('./agents/nova');
+      const report = await generateDailyCommissionReport();
+      logger.info('Nova: Daily commission report complete', { report });
+    } catch (error) {
+      logger.error('Nova: Commission report failed', { error: error.message });
+    }
+  });
+
+  // ── SYSTEM: Token blacklist cleanup at 2:00 AM ──
+  cron.schedule('0 2 * * *', async () => {
+    logger.info('System: Cleaning expired blacklisted tokens');
+    try {
+      const { getServiceClient } = require('./config/supabase');
+      const supabase = getServiceClient();
+      await supabase.rpc('clean_expired_tokens');
+      logger.info('System: Token blacklist cleanup complete');
+    } catch (error) {
+      logger.error('System: Token cleanup failed', { error: error.message });
+    }
+  });
+
+  // ── ELTON: Daily analytics aggregation at 6:00 PM ──
+  cron.schedule('0 18 * * *', async () => {
+    logger.info('Elton: Daily intelligence report aggregation triggered');
+    try {
+      const { getServiceClient } = require('./config/supabase');
+      const supabase = getServiceClient();
+
+      // Aggregate today's session counts per agent
+      const today = new Date().toISOString().split('T')[0];
+      const { data: sessions } = await supabase
+        .from('sessions')
+        .select('agent_id, camera_used, completed')
+        .gte('created_at', `${today}T00:00:00`);
+
+      const agentCounts = (sessions || []).reduce((acc, s) => {
+        acc[s.agent_id] = (acc[s.agent_id] || 0) + 1;
+        return acc;
+      }, {});
+
+      await supabase.from('alerts').insert({
+        type: 'daily_analytics',
+        message: `Elton: Daily session analytics — ${sessions?.length || 0} sessions today`,
+        severity: 'info',
+        agent_id: 'PC-020',
+        metadata: {
+          date: today,
+          total_sessions: sessions?.length || 0,
+          by_agent: agentCounts,
+          camera_sessions: (sessions || []).filter(s => s.camera_used).length,
+          completed_sessions: (sessions || []).filter(s => s.completed).length,
+        },
+      });
+
+      logger.info('Elton: Daily analytics aggregated', {
+        totalSessions: sessions?.length || 0,
+      });
+    } catch (error) {
+      logger.error('Elton: Daily analytics failed', { error: error.message });
+    }
+  });
+
+  // ── CELESTE: Daily revenue summary consolidation at 8:00 AM ──
+  cron.schedule('0 8 * * *', async () => {
+    logger.info('Celeste: Daily revenue summary consolidation triggered');
+    try {
+      const { getServiceClient } = require('./config/supabase');
+      const supabase = getServiceClient();
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
+
+      // Tally all transactions from yesterday
+      const { data: transactions } = await supabase
+        .from('transactions')
+        .select('type, amount, currency, status')
+        .gte('created_at', `${yesterday}T00:00:00`)
+        .lt('created_at', `${yesterday}T23:59:59`)
+        .eq('status', 'success');
+
+      const byType = (transactions || []).reduce((acc, t) => {
+        if (!acc[t.type]) acc[t.type] = 0;
+        acc[t.type] += parseFloat(t.amount || 0);
+        return acc;
+      }, {});
+
+      const totalRevenue = Object.values(byType).reduce((sum, v) => sum + v, 0);
+
+      await supabase.from('alerts').insert({
+        type: 'daily_revenue',
+        message: `Celeste: Yesterday's revenue — $${totalRevenue.toFixed(2)}`,
+        severity: 'info',
+        agent_id: 'PC-002',
+        metadata: {
+          date: yesterday,
+          total: totalRevenue,
+          by_type: byType,
+          transaction_count: transactions?.length || 0,
+        },
+      });
+
+      logger.info('Celeste: Revenue summary complete', {
+        date: yesterday,
+        total: totalRevenue,
+      });
+    } catch (error) {
+      logger.error('Celeste: Revenue summary failed', { error: error.message });
+    }
+  });
+
+  // ── NADIA: Agent performance check every 6 hours ──
+  cron.schedule('0 */6 * * *', async () => {
+    logger.info('Nadia: Agent performance check triggered');
+    try {
+      const { getServiceClient } = require('./config/supabase');
+      const supabase = getServiceClient();
+
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+
+      const { data: recentSessions } = await supabase
+        .from('sessions')
+        .select('agent_id, completed')
+        .gte('created_at', sixHoursAgo);
+
+      const agentActivity = (recentSessions || []).reduce((acc, s) => {
+        acc[s.agent_id] = (acc[s.agent_id] || { sessions: 0, completed: 0 });
+        acc[s.agent_id].sessions++;
+        if (s.completed) acc[s.agent_id].completed++;
+        return acc;
+      }, {});
+
+      logger.info('Nadia: Agent performance check complete', {
+        activeAgents: Object.keys(agentActivity).length,
+        totalSessions: recentSessions?.length || 0,
+      });
+    } catch (error) {
+      logger.error('Nadia: Performance check failed', { error: error.message });
+    }
+  });
+
+  logger.info('All cron jobs scheduled', {
+    jobs: [
+      'Belle hourly cleanup (0 * * * *)',
+      'Belle daily deep cleanup (0 3 * * *)',
+      'Nova commission report (30 8 * * *)',
+      'System token cleanup (0 2 * * *)',
+      'Elton analytics (0 18 * * *)',
+      'Celeste revenue summary (0 8 * * *)',
+      'Nadia performance check (0 */6 * * *)',
+    ],
+  });
+}
+
+// ─────────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
@@ -301,13 +482,17 @@ async function startServer() {
     validateEnvironment();
 
     const server = app.listen(PORT, () => {
-      logger.info(`PRECCI Backend running`, {
+      logger.info('PRECCI Backend running', {
         port: PORT,
         environment: process.env.NODE_ENV || 'development',
         url: `http://localhost:${PORT}`,
       });
     });
 
+    // Start all autonomous background operations
+    scheduleAllCronJobs();
+
+    // ── GRACEFUL SHUTDOWN ──
     process.on('SIGTERM', () => {
       logger.info('SIGTERM received — shutting down gracefully');
       server.close(() => {
