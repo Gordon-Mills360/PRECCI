@@ -1,0 +1,87 @@
+# FILE: precci/backend/render.yaml
+# Render deployment configuration for PRECCI backend.
+
+services:
+  - type: web
+    name: precci-backend
+    env: node
+    region: oregon
+    plan: starter
+    branch: main
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: VAPI_API_KEY
+        sync: false
+      - key: VAPI_WEBHOOK_SECRET
+        sync: false
+      - key: REPLICATE_API_TOKEN
+        sync: false
+      - key: OPENWEATHERMAP_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_PHONE_NUMBER
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: PRECIOUS_EMAIL
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: API_URL
+        sync: false
+      - key: CONNECT_REGISTRATION_FEE
+        value: "25.00"
+      - key: CONNECT_BASIC_MONTHLY
+        value: "15.00"
+      - key: CONNECT_PRO_MONTHLY
+        value: "30.00"
+      - key: CONNECT_REFERRAL_BASIC
+        value: "3.00"
+      - key: CONNECT_REFERRAL_PRO
+        value: "2.00"
+      - key: CONNECT_REFERRAL_FEATURED
+        value: "1.50"
+      - key: APPOINTMENT_CODE_EXPIRY_HOURS
+        value: "24"
