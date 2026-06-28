@@ -26,8 +26,6 @@ export default function PWALayout({
         }
 
         const vapi = new Vapi(publicKey);
-
-        // Store Vapi instance globally for all components to access
         (window as any).__precciVapi = vapi;
 
         const graceAssistantId = process.env.NEXT_PUBLIC_VAPI_GRACE_ASSISTANT_ID;
@@ -37,7 +35,6 @@ export default function PWALayout({
           return;
         }
 
-        // Voice session lifecycle events
         vapi.on('call-start', () => {
           window.dispatchEvent(new CustomEvent('precci:voice-start'));
         });
@@ -71,10 +68,7 @@ export default function PWALayout({
           );
         });
 
-        // Start Grace — single argument only (assistant ID)
-        // Metadata is configured on the Vapi assistant itself in the dashboard
         await vapi.start(graceAssistantId);
-
       } catch (error) {
         console.warn('PRECCI: Voice initialisation failed', error);
       }
@@ -85,7 +79,7 @@ export default function PWALayout({
     return () => {
       const vapi = (window as any).__precciVapi;
       if (vapi) {
-        try { vapi.stop(); } catch { /* ignore cleanup errors */ }
+        try { vapi.stop(); } catch { /* ignore */ }
       }
     };
   }, []);

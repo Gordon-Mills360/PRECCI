@@ -1,15 +1,10 @@
 // FILE: precci/frontend/app/(dashboard)/dashboard/page.tsx
-// Main dashboard overview for Precious.
-// Real data from Supabase via backend API.
-// Vivienne narrates this data by voice via JARVIS.
-
 'use client';
 
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import StatusBadge from '../../components/ui/StatusBadge';
-import AgentAvatar from '../../components/ui/AgentAvatar';
-import LoadingPulse from '../../components/ui/LoadingPulse';
+import StatusBadge from '@/app/components/ui/StatusBadge';
+import LoadingPulse from '@/app/components/ui/LoadingPulse';
 
 interface DashboardOverview {
   users: { total: number; byPlan: Record<string, number> };
@@ -31,13 +26,9 @@ export default function DashboardPage() {
         const token = localStorage.getItem('precci_access_token');
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/api/dashboard/overview`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          { headers: { Authorization: `Bearer ${token}` } }
         );
-
-        if (!response.ok) throw new Error('Failed to fetch dashboard data');
-
+        if (!response.ok) throw new Error('Failed to fetch');
         const data = await response.json();
         setOverview(data.overview);
       } catch (err: any) {
@@ -48,22 +39,21 @@ export default function DashboardPage() {
     }
 
     fetchOverview();
-    // Refresh every 60 seconds
     const interval = setInterval(fetchOverview, 60000);
     return () => clearInterval(interval);
   }, []);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full min-h-screen">
+      <div className="flex items-center justify-center min-h-screen">
         <LoadingPulse label="Loading PRECCI data..." />
       </div>
     );
   }
 
-  if (error) {
+  if (error || !overview) {
     return (
-      <div className="flex items-center justify-center h-full min-h-screen">
+      <div className="flex items-center justify-center min-h-screen">
         <p style={{ color: 'rgba(250,240,232,0.4)' }}>
           Data temporarily unavailable
         </p>
@@ -74,45 +64,44 @@ export default function DashboardPage() {
   const metrics = [
     {
       label: 'Total Users',
-      value: overview?.users.total.toLocaleString() || '0',
-      sub: `${overview?.users.byPlan?.glow || 0} Glow · ${overview?.users.byPlan?.pro || 0} Pro · ${overview?.users.byPlan?.elite || 0} Elite`,
+      value: overview.users.total.toLocaleString(),
+      sub: `${overview.users.byPlan?.glow || 0} Glow · ${overview.users.byPlan?.pro || 0} Pro · ${overview.users.byPlan?.elite || 0} Elite`,
       color: '#C9847A',
     },
     {
       label: 'Revenue Today',
-      value: `$${overview?.revenue.today.toFixed(2) || '0.00'}`,
+      value: `$${overview.revenue.today.toFixed(2)}`,
       sub: 'Across all 16 streams',
       color: '#D4A853',
     },
     {
       label: 'Sessions This Week',
-      value: overview?.sessions.thisWeek.toLocaleString() || '0',
+      value: overview.sessions.thisWeek.toLocaleString(),
       sub: 'Appearance intelligence sessions',
       color: '#F2B5B0',
     },
     {
       label: 'Active Agents',
-      value: `${overview?.agents.active || 0} / ${overview?.agents.total || 28}`,
+      value: `${overview.agents.active} / ${overview.agents.total}`,
       sub: 'All divisions operating',
       color: '#C9847A',
     },
     {
       label: 'Connect Bookings',
-      value: overview?.connect.bookingsThisWeek.toLocaleString() || '0',
-      sub: `$${overview?.connect.referralFeesThisWeek.toFixed(2) || '0.00'} referral fees`,
+      value: overview.connect.bookingsThisWeek.toLocaleString(),
+      sub: `$${overview.connect.referralFeesThisWeek.toFixed(2)} referral fees`,
       color: '#D4A853',
     },
     {
       label: 'Open Alerts',
-      value: overview?.alerts.length.toString() || '0',
-      sub: overview?.alerts.length === 0 ? 'All systems operating' : 'Requires attention',
-      color: overview?.alerts.length ? '#EF4444' : '#22C55E',
+      value: overview.alerts.length.toString(),
+      sub: overview.alerts.length === 0 ? 'All systems operating' : 'Requires attention',
+      color: overview.alerts.length ? '#EF4444' : '#22C55E',
     },
   ];
 
   return (
     <div className="p-8">
-      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -134,7 +123,6 @@ export default function DashboardPage() {
         </p>
       </motion.div>
 
-      {/* Metric cards */}
       <div className="grid grid-cols-3 gap-4 mb-8">
         {metrics.map((metric, i) => (
           <motion.div
@@ -156,18 +144,14 @@ export default function DashboardPage() {
             >
               {metric.value}
             </p>
-            <p
-              className="text-xs"
-              style={{ color: 'rgba(250,240,232,0.35)' }}
-            >
+            <p className="text-xs" style={{ color: 'rgba(250,240,232,0.35)' }}>
               {metric.sub}
             </p>
           </motion.div>
         ))}
       </div>
 
-      {/* Alerts */}
-      {overview?.alerts && overview.alerts.length > 0 && (
+      {overview.alerts.length > 0 && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -181,7 +165,7 @@ export default function DashboardPage() {
             Active Alerts
           </p>
           <div className="flex flex-col gap-2">
-            {overview.alerts.map((alert, i) => (
+            {overview.alerts.map((alert: any, i: number) => (
               <div key={i} className="flex items-center justify-between">
                 <p className="text-sm" style={{ color: '#FAF0E8' }}>
                   {alert.message}

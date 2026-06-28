@@ -1,12 +1,10 @@
 // FILE: precci/frontend/app/(pwa)/welcome/page.tsx
-// Grace's welcome screen — the first thing every client sees and hears.
-// Grace's voice activates automatically. No text input. No buttons to press.
-// Full screen PRECCI branded experience.
-
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import PrecciLogo from '@/app/components/ui/PrecciLogo';
+import VoiceStatusIndicator from '@/app/components/voice/VoiceStatusIndicator';
 
 export default function WelcomePage() {
   const [voiceActive, setVoiceActive] = useState(false);
@@ -16,7 +14,6 @@ export default function WelcomePage() {
   const animFrameRef = useRef<number>();
 
   useEffect(() => {
-    // Listen for PRECCI voice events from the PWA layout
     function onVoiceStart() {
       setVoiceActive(true);
       setStatusText('Grace is listening...');
@@ -24,7 +21,7 @@ export default function WelcomePage() {
 
     function onVoiceEnd() {
       setVoiceActive(false);
-      setStatusText('Tap or speak to reconnect');
+      setStatusText('Speak to connect with Grace');
     }
 
     function onAgentSpeaking(e: CustomEvent) {
@@ -65,53 +62,29 @@ export default function WelcomePage() {
     animFrameRef.current = requestAnimationFrame(frame);
   }
 
-  function handleTap() {
-    const vapi = (window as any).__precciVapi;
-    if (!vapi) return;
-
-    if (voiceActive) {
-      vapi.stop();
-    } else {
-      const graceId = process.env.NEXT_PUBLIC_VAPI_GRACE_ASSISTANT_ID;
-      if (graceId) vapi.start(graceId);
-    }
-  }
-
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center bg-precci-gradient px-6"
-      onClick={handleTap}
+      className="min-h-screen flex flex-col items-center justify-center px-6"
       style={{
         background:
           'radial-gradient(ellipse at 50% 30%, rgba(201, 132, 122, 0.15) 0%, transparent 70%), #1A0A0F',
       }}
     >
-      {/* PRECCI Logo */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: 'easeOut' }}
         className="text-center mb-16"
       >
-        <h1
-          className="text-5xl font-display font-bold tracking-widest mb-2"
-          style={{ color: '#C9847A' }}
-        >
-          PRECCI
-        </h1>
-        <p className="text-sm tracking-[0.3em] text-champagne/60 uppercase">
-          Personal AI Appearance Intelligence
-        </p>
+        <PrecciLogo size="lg" />
       </motion.div>
 
-      {/* Voice visualiser — Grace's presence */}
       <motion.div
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, delay: 0.3 }}
         className="relative flex items-center justify-center mb-16"
       >
-        {/* Outer rings — listening state */}
         <AnimatePresence>
           {voiceActive && !agentSpeaking && (
             <>
@@ -134,7 +107,6 @@ export default function WelcomePage() {
           )}
         </AnimatePresence>
 
-        {/* Central orb */}
         <motion.div
           className="relative z-10 rounded-full flex items-center justify-center"
           animate={{
@@ -155,7 +127,6 @@ export default function WelcomePage() {
             border: '1px solid rgba(201,132,122,0.5)',
           }}
         >
-          {/* Waveform bars — visible when Grace is speaking */}
           <AnimatePresence>
             {agentSpeaking && (
               <div className="flex items-center gap-1">
@@ -172,7 +143,6 @@ export default function WelcomePage() {
             )}
           </AnimatePresence>
 
-          {/* Grace's initial letter — when not speaking */}
           <AnimatePresence>
             {!agentSpeaking && (
               <motion.span
@@ -189,12 +159,11 @@ export default function WelcomePage() {
         </motion.div>
       </motion.div>
 
-      {/* Status text */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.6 }}
-        className="text-center"
+        className="text-center flex flex-col items-center gap-3"
       >
         <motion.p
           key={statusText}
@@ -205,6 +174,12 @@ export default function WelcomePage() {
         >
           {statusText}
         </motion.p>
+
+        <VoiceStatusIndicator
+          isConnected={voiceActive}
+          isSpeaking={agentSpeaking}
+          isListening={voiceActive && !agentSpeaking}
+        />
       </motion.div>
     </div>
   );

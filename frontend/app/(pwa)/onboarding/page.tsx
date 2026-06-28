@@ -1,18 +1,14 @@
 // FILE: precci/frontend/app/(pwa)/onboarding/page.tsx
-// Client onboarding — Grace collects profile by voice.
-// No form. No text input. Grace listens and builds the profile.
-// Redirects to session once Grace completes onboarding.
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import VoiceButton from '../components/voice/VoiceButton';
-import VoiceListener from '../components/voice/VoiceListener';
-import VoiceStatusIndicator from '../components/voice/VoiceStatusIndicator';
-import PrecciLogo from '../components/ui/PrecciLogo';
-import type { VoiceState } from '../components/voice/VoiceListener';
+import VoiceButton from '@/app/components/voice/VoiceButton';
+import VoiceListener from '@/app/components/voice/VoiceListener';
+import VoiceStatusIndicator from '@/app/components/voice/VoiceStatusIndicator';
+import PrecciLogo from '@/app/components/ui/PrecciLogo';
+import type { VoiceState } from '@/app/components/voice/VoiceListener';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -23,17 +19,6 @@ export default function OnboardingPage() {
     currentAgent: 'Grace',
     error: null,
   });
-
-  function handleTap() {
-    const vapi = (window as any).__precciVapi;
-    if (!vapi) return;
-    if (voiceState.isListening) {
-      vapi.stop();
-    } else {
-      const graceId = process.env.NEXT_PUBLIC_VAPI_GRACE_ASSISTANT_ID;
-      if (graceId) vapi.start(graceId);
-    }
-  }
 
   useEffect(() => {
     function onMessage(e: CustomEvent) {
@@ -86,8 +71,8 @@ export default function OnboardingPage() {
             className="text-sm leading-relaxed max-w-xs"
             style={{ color: 'rgba(250,240,232,0.5)' }}
           >
-            Grace will guide you through everything by voice.
-            Simply speak naturally — no forms, no typing.
+            Grace is listening. Just speak naturally —
+            she will guide you through everything.
           </p>
         </motion.div>
 
@@ -99,7 +84,7 @@ export default function OnboardingPage() {
           <VoiceButton
             isListening={voiceState.isListening}
             isSpeaking={voiceState.isSpeaking}
-            onTap={handleTap}
+            onTap={() => {}}
             agentInitial="G"
             size={130}
           />
