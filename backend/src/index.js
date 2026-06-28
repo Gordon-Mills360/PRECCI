@@ -114,7 +114,7 @@ function stubRouter(routeName) {
   return router;
 }
 
-const cameraRoutes       = stubRouter('Camera AI');
+const cameraRoutes       = require('./routes/camera');
 const paymentsRoutes     = stubRouter('Payments');
 const bookingsRoutes     = stubRouter('Bookings');
 const providersRoutes    = stubRouter('Providers');
