@@ -1,0 +1,37 @@
+# FILE: precci/.gitignore
+# Environment files — NEVER commit any of these
+.env
+.env.local
+.env.development
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Dependencies
+node_modules/
+.npm
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Build outputs
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/settings.json
+.vscode/launch.json
+
+# Sentry
+.sentryclirc

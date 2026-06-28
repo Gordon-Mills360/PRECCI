@@ -1,0 +1,226 @@
+/* FILE: precci/frontend/app/globals.css */
+/* stylelint-disable */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────
+   PRECCI BRAND COLOURS — CSS VARIABLES
+   Applied consistently to every UI element
+   ───────────────────────────────────────────── */
+:root {
+  --color-rose-gold:    #C9847A;
+  --color-blush-pink:   #F2B5B0;
+  --color-warm-gold:    #D4A853;
+  --color-ivory-cream:  #FAF0E8;
+  --color-deep-rose:    #8B3A3A;
+  --color-champagne:    #F5DEB3;
+  --color-midnight:     #1A0A0F;
+  --color-pure-white:   #FFFFFF;
+
+  --background:         var(--color-midnight);
+  --foreground:         var(--color-ivory-cream);
+  --primary:            var(--color-rose-gold);
+  --primary-hover:      var(--color-deep-rose);
+  --secondary:          var(--color-warm-gold);
+  --accent:             var(--color-blush-pink);
+  --surface:            rgba(255, 255, 255, 0.04);
+  --surface-hover:      rgba(255, 255, 255, 0.08);
+  --border:             rgba(201, 132, 122, 0.2);
+  --border-active:      rgba(201, 132, 122, 0.6);
+}
+
+/* ─────────────────────────────────────────────
+   BASE RESET
+   ───────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100%;
+  background-color: var(--color-midnight);
+  color: var(--color-ivory-cream);
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  scroll-behavior: smooth;
+  overscroll-behavior: none;
+}
+
+/* ─────────────────────────────────────────────
+   TYPOGRAPHY
+   ───────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-playfair), Georgia, serif;
+  color: var(--color-ivory-cream);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
+h2 { font-size: clamp(1.5rem, 4vw, 2.5rem); }
+h3 { font-size: clamp(1.25rem, 3vw, 1.75rem); }
+
+p {
+  color: rgba(250, 240, 232, 0.8);
+  line-height: 1.7;
+}
+
+/* ─────────────────────────────────────────────
+   PRECCI COMPONENT CLASSES
+   ───────────────────────────────────────────── */
+.voice-listening-ring {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--color-rose-gold);
+  animation: voiceRing 2s ease-in-out infinite;
+}
+
+.voice-listening-ring:nth-child(2) {
+  animation-delay: 0.5s;
+  inset: -12px;
+  opacity: 0.6;
+}
+
+.voice-listening-ring:nth-child(3) {
+  animation-delay: 1s;
+  inset: -20px;
+  opacity: 0.3;
+}
+
+.precci-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.precci-card:hover {
+  border-color: var(--border-active);
+  background: var(--surface-hover);
+}
+
+.text-gold  { color: var(--color-warm-gold); }
+.text-rose  { color: var(--color-rose-gold); }
+
+.btn-precci {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, var(--color-rose-gold), var(--color-deep-rose));
+  color: var(--color-pure-white);
+  border-radius: 50px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-precci:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px rgba(201, 132, 122, 0.4);
+}
+
+.btn-precci:active {
+  transform: translateY(0);
+}
+
+/* ─────────────────────────────────────────────
+   CAMERA VIEW
+   ───────────────────────────────────────────── */
+.camera-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 3/4;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.camera-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ─────────────────────────────────────────────
+   SCROLLBAR
+   ───────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-rose-gold); border-radius: 4px; }
+
+/* ─────────────────────────────────────────────
+   SAFE AREA INSETS — iOS PWA
+   ───────────────────────────────────────────── */
+.safe-top    { padding-top:    env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+.safe-left   { padding-left:   env(safe-area-inset-left); }
+.safe-right  { padding-right:  env(safe-area-inset-right); }
+
+/* ─────────────────────────────────────────────
+   NO USER SELECT
+   ───────────────────────────────────────────── */
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ─────────────────────────────────────────────
+   ANIMATIONS
+   ───────────────────────────────────────────── */
+@keyframes voicePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.05); opacity: 0.8; }
+}
+
+@keyframes voiceRing {
+  0%   { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(201, 132, 122, 0.3); }
+  50%       { box-shadow: 0 0 40px rgba(201, 132, 122, 0.7); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(201, 132, 122, 0.1) 25%,
+    rgba(201, 132, 122, 0.3) 50%,
+    rgba(201, 132, 122, 0.1) 75%
+  );
+  background-size: 200% auto;
+  animation: shimmer 2s linear infinite;
+}
