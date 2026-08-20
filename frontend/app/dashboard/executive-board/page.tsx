@@ -1,4 +1,4 @@
-// FILE: precci/frontend/app/dashboard/executive-board/page.jsx
+// FILE: precci/frontend/app/dashboard/executive-board/page.tsx
 // CUTEME LTD — Executive Board Page
 // All 7 board directors — real performance data only.
 // Live session counts, alert history, decision logs.
@@ -10,8 +10,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 );
 
 const C = {
@@ -23,7 +23,16 @@ const C = {
   error: '#ef4444', white: '#FFFFFF',
 };
 
-const BOARD = [
+interface Director {
+  pcId: string;
+  name: string;
+  role: string;
+  initials: string;
+  colour: string;
+  desc: string;
+}
+
+const BOARD: Director[] = [
   { pcId: 'PC-001', name: 'Vivienne', role: 'AI Chief Executive Officer', initials: 'VI', colour: C.roseGold, desc: 'Runs PRECCI entirely. Orchestrates all 27 agents. Reports to Precious every Sunday.' },
   { pcId: 'PC-002', name: 'Celeste', role: 'Chief Finance Officer', initials: 'CE', colour: C.warmGold, desc: 'Manages all 16 revenue streams. Sends Vivienne daily financial report at 8AM.' },
   { pcId: 'PC-003', name: 'Marcus', role: 'Chief Technology Officer', initials: 'MA', colour: C.blushPink, desc: 'Manages PWA, backend, all APIs, 28 agent uptime. Monitors Sentry and Uptime Robot.' },
@@ -33,19 +42,49 @@ const BOARD = [
   { pcId: 'PC-007', name: 'Sebastian', role: 'Chief Legal Officer', initials: 'SE', colour: C.steelBlue, desc: 'Handles all contracts, compliance, trademark protection and legal matters globally.' },
 ];
 
-function fmtTime(iso) {
+interface ActivityItem {
+  message: string;
+  time: string;
+  severity: string;
+  resolved: boolean;
+}
+
+interface DirectorData {
+  sessionsToday: number;
+  completedToday: number;
+  completionRate: number | null;
+  unresolvedAlerts: number;
+  criticalAlerts: number;
+  recentActivity: ActivityItem[];
+}
+
+interface SessionRow {
+  agent_id: string;
+  completed: boolean;
+}
+
+interface AlertRow {
+  agent_id: string;
+  type: string;
+  message: string;
+  severity: string;
+  resolved: boolean;
+  created_at: string;
+}
+
+function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-function fmtNum(v) {
+function fmtNum(v: number | null | undefined): string {
   if (v === null || v === undefined) return '—';
   return new Intl.NumberFormat('en-US').format(v);
 }
 
 function useBoardData() {
-  const [boardData, setBoardData] = useState({});
-  const [agentStatuses, setAgentStatuses] = useState({});
+  const [boardData, setBoardData] = useState<Record<string, DirectorData>>({});
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -60,14 +99,14 @@ function useBoardData() {
       supabase.from('sessions').select('agent_id').gte('created_at', tenMinAgo).in('agent_id', pcIds),
     ]);
 
-    const sessions = sessionsResult.status === 'fulfilled' ? sessionsResult.value.data || [] : [];
-    const alerts = alertsResult.status === 'fulfilled' ? alertsResult.value.data || [] : [];
-    const recent = recentResult.status === 'fulfilled' ? recentResult.value.data || [] : [];
+    const sessions: SessionRow[] = sessionsResult.status === 'fulfilled' ? (sessionsResult.value.data as SessionRow[]) || [] : [];
+    const alerts: AlertRow[] = alertsResult.status === 'fulfilled' ? (alertsResult.value.data as AlertRow[]) || [] : [];
+    const recent: { agent_id: string }[] = recentResult.status === 'fulfilled' ? (recentResult.value.data as { agent_id: string }[]) || [] : [];
 
     const recentSet = new Set(recent.map(s => s.agent_id));
 
-    const statuses = {};
-    const data = {};
+    const statuses: Record<string, string> = {};
+    const data: Record<string, DirectorData> = {};
 
     BOARD.forEach(b => {
       statuses[b.pcId] = recentSet.has(b.pcId) ? 'busy' : 'online';
@@ -85,7 +124,7 @@ function useBoardData() {
         unresolvedAlerts: agentAlerts.filter(a => !a.resolved).length,
         criticalAlerts: agentAlerts.filter(a => !a.resolved && a.severity === 'critical').length,
         recentActivity: agentAlerts.slice(0, 5).map(a => ({
-          message: a.message?.substring(0, 80),
+          message: a.message?.substring(0, 80) ?? '',
           time: fmtTime(a.created_at),
           severity: a.severity,
           resolved: a.resolved,
@@ -112,7 +151,7 @@ function useBoardData() {
 
 export default function ExecutiveBoardPage() {
   const { boardData, agentStatuses } = useBoardData();
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState<string | null>(null);
 
   return (
     <div style={{ padding: '20px 24px', background: C.midnight, minHeight: '100vh', color: C.white, fontFamily: 'Inter, sans-serif' }}>
@@ -172,7 +211,7 @@ export default function ExecutiveBoardPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, marginBottom: data && isSelected ? 12 : 0 }}>
                 {[
                   { label: 'Sessions Today', value: data ? fmtNum(data.sessionsToday) : '—' },
-                  { label: 'Completion Rate', value: data?.completionRate !== null ? `${data.completionRate}%` : '—' },
+                  { label: 'Completion Rate', value: data?.completionRate !== null && data?.completionRate !== undefined ? `${data.completionRate}%` : '—' },
                   { label: 'Open Alerts', value: data ? fmtNum(data.unresolvedAlerts) : '—' },
                 ].map(m => (
                   <div key={m.label} style={{ background: C.bgCard, borderRadius: 6, padding: '6px 8px', textAlign: 'center' }}>
@@ -183,7 +222,7 @@ export default function ExecutiveBoardPage() {
               </div>
 
               {/* Expanded activity */}
-              {isSelected && data?.recentActivity.length > 0 && (
+              {isSelected && data && data.recentActivity.length > 0 && (
                 <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
                   <div style={{ fontSize: 9, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                     Recent Activity
@@ -204,7 +243,7 @@ export default function ExecutiveBoardPage() {
                 </div>
               )}
 
-              {isSelected && data?.recentActivity.length === 0 && (
+              {isSelected && data && data.recentActivity.length === 0 && (
                 <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10, fontSize: 10, color: C.textMuted, fontStyle: 'italic' }}>
                   No recent activity
                 </div>

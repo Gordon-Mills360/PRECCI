@@ -1,4 +1,4 @@
-// FILE: precci/frontend/app/dashboard/live-operations/page.jsx
+// FILE: precci/frontend/app/dashboard/live-operations/page.tsx
 // CUTEME LTD — Live Operations Page
 // Real-time view of all active sessions, voice calls,
 // camera analyses, bookings in flight, cron job status.
@@ -6,12 +6,12 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 );
 
 const C = {
@@ -22,7 +22,13 @@ const C = {
   warning: '#eab308', white: '#FFFFFF',
 };
 
-const AGENT_MAP = {
+interface AgentInfo {
+  name: string;
+  colour: string;
+  initials: string;
+}
+
+const AGENT_MAP: Record<string, AgentInfo> = {
   'PC-001': { name: 'Vivienne', colour: '#C4A494', initials: 'VI' },
   'PC-002': { name: 'Celeste', colour: '#D4A853', initials: 'CE' },
   'PC-003': { name: 'Marcus', colour: '#F2B5B0', initials: 'MA' },
@@ -52,7 +58,14 @@ const AGENT_MAP = {
   'PC-027': { name: 'Brook', colour: '#F5A623', initials: 'BR' },
 };
 
-const CRON_SCHEDULE = [
+interface CronDef {
+  name: string;
+  time: string;
+  agentId: string;
+  alertType: string;
+}
+
+const CRON_SCHEDULE: CronDef[] = [
   { name: 'Nina Morning Content', time: '07:00', agentId: 'PC-019', alertType: 'nina_morning_publish' },
   { name: 'Piper Daily Tips', time: '07:30', agentId: 'PC-018', alertType: 'daily_tips_generated' },
   { name: 'Celeste Daily Report', time: '08:00', agentId: 'PC-002', alertType: 'celeste_vivienne_report' },
@@ -63,12 +76,50 @@ const CRON_SCHEDULE = [
   { name: 'Belle Cleanup', time: 'Hourly', agentId: 'PC-016', alertType: 'belle_cleanup' },
 ];
 
-function fmtTime(iso) {
+interface SessionRow {
+  id: string;
+  agent_id: string;
+  user_id: string;
+  created_at: string;
+  camera_used: boolean;
+  sage_data?: unknown;
+}
+
+interface VoiceSessionRow {
+  id: string;
+  agent_id: string;
+  session_type: string;
+  started_at: string;
+}
+
+interface BookingRow {
+  id: string;
+  appointment_code: string;
+  appointment_date: string;
+  appointment_time: string;
+  status: string;
+  services_requested: string[] | string;
+  created_at: string;
+}
+
+interface RoutingRow {
+  from_agent: string;
+  to_agent: string;
+  routing_reason: string;
+  timestamp: string;
+}
+
+interface CronStatusEntry {
+  lastRun: string | null;
+  ranToday: boolean;
+}
+
+function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
-function fmtDuration(startIso) {
+function fmtDuration(startIso: string | null | undefined): string {
   if (!startIso) return '';
   const diff = Date.now() - new Date(startIso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -77,12 +128,12 @@ function fmtDuration(startIso) {
 }
 
 function useLiveOps() {
-  const [activeSessions, setActiveSessions] = useState([]);
-  const [activeVoice, setActiveVoice] = useState([]);
-  const [activeCamera, setActiveCamera] = useState([]);
-  const [pendingBookings, setPendingBookings] = useState([]);
-  const [cronStatus, setCronStatus] = useState({});
-  const [recentRouting, setRecentRouting] = useState([]);
+  const [activeSessions, setActiveSessions] = useState<SessionRow[]>([]);
+  const [activeVoice, setActiveVoice] = useState<VoiceSessionRow[]>([]);
+  const [activeCamera, setActiveCamera] = useState<SessionRow[]>([]);
+  const [pendingBookings, setPendingBookings] = useState<BookingRow[]>([]);
+  const [cronStatus, setCronStatus] = useState<Record<string, CronStatusEntry>>({});
+  const [recentRouting, setRecentRouting] = useState<RoutingRow[]>([]);
 
   const load = useCallback(async () => {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -98,16 +149,16 @@ function useLiveOps() {
       supabase.from('alerts').select('type, created_at').gte('created_at', todayStart.toISOString()).in('type', CRON_SCHEDULE.map(c => c.alertType)).order('created_at', { ascending: false }),
     ]);
 
-    setActiveSessions(sessResult.status === 'fulfilled' ? sessResult.value.data || [] : []);
-    setActiveVoice(voiceResult.status === 'fulfilled' ? voiceResult.value.data || [] : []);
-    setActiveCamera(cameraResult.status === 'fulfilled' ? cameraResult.value.data || [] : []);
-    setPendingBookings(bookResult.status === 'fulfilled' ? bookResult.value.data || [] : []);
-    setRecentRouting(routeResult.status === 'fulfilled' ? routeResult.value.data || [] : []);
+    setActiveSessions(sessResult.status === 'fulfilled' ? (sessResult.value.data as SessionRow[]) || [] : []);
+    setActiveVoice(voiceResult.status === 'fulfilled' ? (voiceResult.value.data as VoiceSessionRow[]) || [] : []);
+    setActiveCamera(cameraResult.status === 'fulfilled' ? (cameraResult.value.data as SessionRow[]) || [] : []);
+    setPendingBookings(bookResult.status === 'fulfilled' ? (bookResult.value.data as BookingRow[]) || [] : []);
+    setRecentRouting(routeResult.status === 'fulfilled' ? (routeResult.value.data as RoutingRow[]) || [] : []);
 
     // Cron status
     if (cronResult.status === 'fulfilled') {
-      const cronAlerts = cronResult.value.data || [];
-      const status = {};
+      const cronAlerts = (cronResult.value.data as { type: string; created_at: string }[]) || [];
+      const status: Record<string, CronStatusEntry> = {};
       CRON_SCHEDULE.forEach(cron => {
         const lastRun = cronAlerts.find(a => a.type === cron.alertType);
         status[cron.alertType] = {
@@ -136,6 +187,17 @@ function useLiveOps() {
   return { activeSessions, activeVoice, activeCamera, pendingBookings, cronStatus, recentRouting };
 }
 
+function AgentChip({ pcId }: { pcId: string }) {
+  const a = AGENT_MAP[pcId];
+  if (!a) return <span style={{ fontSize: 9, color: '#8a6a6a' }}>{pcId}</span>;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div style={{ width: 16, height: 16, borderRadius: '50%', background: a.colour + '20', border: `1px solid ${a.colour}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 6, fontWeight: 800, color: a.colour }}>{a.initials}</div>
+      <span style={{ fontSize: 9, fontWeight: 600, color: a.colour }}>{a.name}</span>
+    </div>
+  );
+}
+
 export default function LiveOperationsPage() {
   const { activeSessions, activeVoice, activeCamera, pendingBookings, cronStatus, recentRouting } = useLiveOps();
   const [, setTick] = useState(0);
@@ -145,17 +207,6 @@ export default function LiveOperationsPage() {
     const i = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(i);
   }, []);
-
-  function AgentChip({ pcId }) {
-    const a = AGENT_MAP[pcId];
-    if (!a) return <span style={{ fontSize: 9, color: '#8a6a6a' }}>{pcId}</span>;
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <div style={{ width: 16, height: 16, borderRadius: '50%', background: a.colour + '20', border: `1px solid ${a.colour}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 6, fontWeight: 800, color: a.colour }}>{a.initials}</div>
-        <span style={{ fontSize: 9, fontWeight: 600, color: a.colour }}>{a.name}</span>
-      </div>
-    );
-  }
 
   const panels = [
     { title: 'Active Sessions', count: activeSessions.length, colour: C.warmGold },

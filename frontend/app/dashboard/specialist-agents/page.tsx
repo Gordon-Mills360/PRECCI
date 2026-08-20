@@ -1,4 +1,4 @@
-// FILE: precci/frontend/app/dashboard/specialist-agents/page.jsx
+// FILE: precci/frontend/app/dashboard/specialist-agents/page.tsx
 // CUTEME LTD — Specialist Agents Page
 // All 21 specialist worker agents — real performance data.
 // Live session counts, camera usage, Nova conversion,
@@ -10,8 +10,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
 );
 
 const C = {
@@ -21,7 +21,7 @@ const C = {
   online: '#22c55e', busy: '#f97316', error: '#ef4444', white: '#FFFFFF',
 };
 
-const AGENT_COLOURS = {
+const AGENT_COLOURS: Record<string, string> = {
   'PC-026': '#00C8ED', 'PC-008': '#C4A494', 'PC-009': '#D4A853',
   'PC-010': '#F2B5B0', 'PC-011': '#F5DEB3', 'PC-012': '#8B3A3A',
   'PC-013': '#F7F0E8', 'PC-014': '#3B82F6', 'PC-015': '#4ECDC4',
@@ -31,7 +31,16 @@ const AGENT_COLOURS = {
   'PC-025': '#4ECDC4', 'PC-027': '#F5A623',
 };
 
-const SPECIALISTS = [
+interface Specialist {
+  pcId: string;
+  name: string;
+  role: string;
+  initials: string;
+  group: string;
+  camera: boolean;
+}
+
+const SPECIALISTS: Specialist[] = [
   { pcId: 'PC-026', name: 'Grace', role: 'Reception & Client Routing', initials: 'GR', group: 'Gateway', camera: false },
   { pcId: 'PC-008', name: 'Luna', role: 'AI Skin Analyst', initials: 'LU', group: 'Beauty Specialists', camera: true },
   { pcId: 'PC-009', name: 'Zara', role: 'Hair Expert', initials: 'ZA', group: 'Beauty Specialists', camera: true },
@@ -56,11 +65,43 @@ const SPECIALISTS = [
 
 const GROUPS = ['Gateway', 'Beauty Specialists', 'Operations', 'Growth', 'Connect'];
 
-function fmtNum(v) { return v !== null && v !== undefined ? new Intl.NumberFormat('en-US').format(v) : '—'; }
+function fmtNum(v: number | null | undefined): string {
+  return v !== null && v !== undefined ? new Intl.NumberFormat('en-US').format(v) : '—';
+}
+
+interface AgentMetrics {
+  sessionsToday: number;
+  completed: number;
+  completionRate: number | null;
+  cameraUsed: number;
+  cameraRate: number | null;
+  openAlerts: number;
+  criticalAlerts: number;
+  recommendations: number;
+  conversions: number;
+  conversionRate: number | null;
+}
+
+interface SessionRow {
+  agent_id: string;
+  completed: boolean;
+  camera_used: boolean;
+}
+
+interface AlertRow {
+  agent_id: string;
+  severity: string;
+  resolved: boolean;
+}
+
+interface RecommendationRow {
+  agent_id: string;
+  purchased: boolean;
+}
 
 function useSpecialistData() {
-  const [agentData, setAgentData] = useState({});
-  const [statuses, setStatuses] = useState({});
+  const [agentData, setAgentData] = useState<Record<string, AgentMetrics>>({});
+  const [statuses, setStatuses] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -76,13 +117,14 @@ function useSpecialistData() {
       supabase.from('agent_memory').select('agent_id', { count: 'exact' }).in('agent_id', pcIds),
     ]);
 
-    const sessions = sessResult.status === 'fulfilled' ? sessResult.value.data || [] : [];
-    const recentSet = new Set((recentResult.status === 'fulfilled' ? recentResult.value.data || [] : []).map(s => s.agent_id));
-    const alerts = alertResult.status === 'fulfilled' ? alertResult.value.data || [] : [];
-    const novaRecs = novaResult.status === 'fulfilled' ? novaResult.value.data || [] : [];
+    const sessions: SessionRow[] = sessResult.status === 'fulfilled' ? (sessResult.value.data as SessionRow[]) || [] : [];
+    const recent: { agent_id: string }[] = recentResult.status === 'fulfilled' ? (recentResult.value.data as { agent_id: string }[]) || [] : [];
+    const recentSet = new Set(recent.map(s => s.agent_id));
+    const alerts: AlertRow[] = alertResult.status === 'fulfilled' ? (alertResult.value.data as AlertRow[]) || [] : [];
+    const novaRecs: RecommendationRow[] = novaResult.status === 'fulfilled' ? (novaResult.value.data as RecommendationRow[]) || [] : [];
 
-    const data = {};
-    const sts = {};
+    const data: Record<string, AgentMetrics> = {};
+    const sts: Record<string, string> = {};
 
     SPECIALISTS.forEach(s => {
       sts[s.pcId] = recentSet.has(s.pcId) ? 'busy' : 'online';
@@ -184,9 +226,9 @@ export default function SpecialistAgentsPage() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
                 {[
                   { label: 'Sessions Today', value: d ? fmtNum(d.sessionsToday) : '—' },
-                  { label: 'Completion Rate', value: d?.completionRate !== null ? `${d.completionRate}%` : '—' },
+                  { label: 'Completion Rate', value: d?.completionRate !== null && d?.completionRate !== undefined ? `${d.completionRate}%` : '—' },
                   agent.camera ? { label: 'Camera Sessions', value: d ? fmtNum(d.cameraUsed) : '—' } : { label: 'Open Alerts', value: d ? fmtNum(d.openAlerts) : '—' },
-                  d?.conversionRate !== null ? { label: 'Conv. Rate', value: `${d.conversionRate}%` } : { label: 'Group', value: agent.group },
+                  d?.conversionRate !== null && d?.conversionRate !== undefined ? { label: 'Conv. Rate', value: `${d.conversionRate}%` } : { label: 'Group', value: agent.group },
                 ].map(m => (
                   <div key={m.label} style={{ background: C.bgCard, borderRadius: 6, padding: '5px 7px' }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: C.white, fontVariantNumeric: 'tabular-nums' }}>{m.value}</div>
@@ -195,7 +237,7 @@ export default function SpecialistAgentsPage() {
                 ))}
               </div>
 
-              {d?.criticalAlerts > 0 && (
+              {d && d.criticalAlerts > 0 && (
                 <div style={{ marginTop: 8, padding: '4px 8px', background: '#ef444411', border: '1px solid #ef444444', borderRadius: 5, fontSize: 9, color: C.error }}>
                   ⚠ {d.criticalAlerts} critical alert{d.criticalAlerts > 1 ? 's' : ''} open
                 </div>

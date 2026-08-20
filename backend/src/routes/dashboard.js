@@ -10,13 +10,13 @@
 const express = require('express');
 const router = express.Router();
 const { getServiceClient } = require('../config/supabase');
-const { verifyJWT, requireRole } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth');
 const { generalLimiter } = require('../middleware/security');
 const logger = require('../utils/logger');
 
 // All dashboard routes require authentication
-router.use(verifyJWT);
-router.use(requireRole('precious_owner'));
+router.use(verifyToken);
+router.use(requireRole(['precious_owner']));
 router.use(generalLimiter);
 
 // ─── GET /api/dashboard/overview ───
