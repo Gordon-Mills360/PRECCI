@@ -1,51 +1,90 @@
 // FILE: precci/frontend/app/components/ui/LoadingPulse.tsx
+// CUTEME LTD — Loading Pulse
+// Branded loading state. Rose Gold animated rings.
+// Used across all pages while data loads.
+// Optional label text.
+
 'use client';
 
-import { motion } from 'framer-motion';
-
 interface LoadingPulseProps {
+  colour?: string;
   size?: number;
-  color?: string;
   label?: string;
 }
 
 export default function LoadingPulse({
-  size = 60,
-  color = '#C9847A',
-  label = 'Loading...',
+  colour = '#C4A494',
+  size = 48,
+  label,
 }: LoadingPulseProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4">
-      <div className="relative" style={{ width: size, height: size }}>
-        {[1, 2, 3].map(i => (
-          <motion.div
-            key={i}
-            className="absolute inset-0 rounded-full border"
-            style={{ borderColor: color }}
-            initial={{ scale: 1, opacity: 0.8 }}
-            animate={{ scale: 1.5 + i * 0.3, opacity: 0 }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              delay: i * 0.4,
-              ease: 'easeOut',
-            }}
-          />
-        ))}
-        <motion.div
-          className="absolute inset-0 rounded-full"
-          style={{ background: `${color}33` }}
-          animate={{ scale: [1, 1.05, 1] }}
-          transition={{ duration: 1.5, repeat: Infinity }}
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 14,
+      }}
+    >
+      <div style={{ position: 'relative', width: size, height: size }}>
+        {/* Outer ring */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            border: `2px solid ${colour}22`,
+          }}
+        />
+        {/* Spinning ring */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            border: `2px solid transparent`,
+            borderTop: `2px solid ${colour}`,
+            animation: 'spin-slow 0.8s linear infinite',
+          }}
+        />
+        {/* Inner counter-rotating ring */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: size * 0.18,
+            borderRadius: '50%',
+            border: `1.5px solid transparent`,
+            borderTop: `1.5px solid ${colour}66`,
+            animation: 'spin-slow 1.4s linear infinite reverse',
+          }}
+        />
+        {/* Centre dot */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: '50%',
+            width: size * 0.14,
+            height: size * 0.14,
+            marginLeft: -(size * 0.07),
+            marginTop: -(size * 0.07),
+            borderRadius: '50%',
+            background: colour,
+            animation: 'pulse-dot 1.4s ease-in-out infinite',
+          }}
         />
       </div>
       {label && (
-        <p
-          className="text-xs tracking-widest uppercase"
-          style={{ color: 'rgba(250,240,232,0.5)' }}
+        <div
+          style={{
+            fontSize: 11,
+            color: '#8a6a6a',
+            fontStyle: 'italic',
+            letterSpacing: '0.03em',
+          }}
         >
           {label}
-        </p>
+        </div>
       )}
     </div>
   );

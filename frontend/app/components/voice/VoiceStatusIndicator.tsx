@@ -1,56 +1,68 @@
 // FILE: precci/frontend/app/components/voice/VoiceStatusIndicator.tsx
-// Small status indicator shown in corners of screens
-// to show current voice connection state.
+// CUTEME LTD — Voice Status Indicator
+// Shows current voice state with waveform and label.
+// Idle: waiting. Listening: client is speaking.
+// Speaking: agent is responding. Processing: Claude is reasoning.
 
 'use client';
 
-import { motion } from 'framer-motion';
+import VoiceWaveform from './VoiceWaveform';
 
 interface VoiceStatusIndicatorProps {
-  isConnected: boolean;
-  isSpeaking: boolean;
-  isListening: boolean;
+  state: 'idle' | 'listening' | 'speaking' | 'processing';
+  agentName?: string;
+  agentColour?: string;
+  showLabel?: boolean;
 }
 
-export default function VoiceStatusIndicator({
-  isConnected,
-  isSpeaking,
-  isListening,
-}: VoiceStatusIndicatorProps) {
-  const color = isSpeaking
-    ? '#D4A853'
-    : isListening
-    ? '#C9847A'
-    : isConnected
-    ? '#22C55E'
-    : '#6B7280';
+const STATE_LABELS = {
+  idle: 'Speak to begin',
+  listening: 'Listening...',
+  speaking: 'Speaking...',
+  processing: 'Thinking...',
+};
 
-  const label = isSpeaking
-    ? 'Speaking'
-    : isListening
-    ? 'Listening'
-    : isConnected
-    ? 'Connected'
-    : 'Disconnected';
+const STATE_COLOURS = {
+  idle: '#8a6a6a',
+  listening: '#22c55e',
+  speaking: '#C4A494',
+  processing: '#D4A853',
+};
+
+export default function VoiceStatusIndicator({
+  state,
+  agentName,
+  agentColour = '#C4A494',
+  showLabel = true,
+}: VoiceStatusIndicatorProps) {
+  const colour = state === 'idle' ? '#8a6a6a' : agentColour;
 
   return (
-    <div className="flex items-center gap-2">
-      <motion.div
-        className="rounded-full"
-        style={{ width: 8, height: 8, background: color }}
-        animate={
-          isListening || isSpeaking
-            ? { scale: [1, 1.3, 1], opacity: [1, 0.7, 1] }
-            : { scale: 1, opacity: 1 }
-        }
-        transition={{ duration: 1.5, repeat: Infinity }}
-      />
-      <span
-        className="text-xs tracking-wider uppercase"
-        style={{ color: 'rgba(250,240,232,0.4)', fontSize: '0.65rem' }}
-      >
-        {label}
-      </span>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <VoiceWaveform state={state} colour={colour} />
+      {showLabel && (
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: STATE_COLOURS[state],
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            transition: 'color 300ms ease',
+          }}
+        >
+          {agentName && state !== 'idle'
+            ? `${agentName} — ${STATE_LABELS[state]}`
+            : STATE_LABELS[state]}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,94 +1,131 @@
 // FILE: precci/frontend/app/components/voice/VoiceListener.tsx
-// Manages the Vapi voice session lifecycle.
-// Exposes voice state to all child components via window events.
-// No text input anywhere in this component.
+// CUTEME LTD — Voice Listener
+// Always-on Vapi voice listener.
+// Initialises Vapi on mount.
+// Manages voice state transitions.
+// Sends transcripts to backend for agent processing.
+// Receives agent audio response and plays it.
+// Grace is the default agent — routes to specialists.
+// No text input. No buttons to start. Always listening.
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-
-export interface VoiceState {
-  isConnected: boolean;
-  isListening: boolean;
-  isSpeaking: boolean;
-  currentAgent: string | null;
-  error: string | null;
-}
+import { useEffect, useRef, useCallback, useState } from 'react';
 
 interface VoiceListenerProps {
-  onStateChange?: (state: VoiceState) => void;
-  onMessage?: (message: any) => void;
-  onRouting?: (targetAgent: string) => void;
+  userId: string;
+  sessionId: string;
+  agentId: string;
+  vapiAssistantId: string;
+  onStateChange: (state: 'idle' | 'listening' | 'speaking' | 'processing') => void;
+  onTranscript: (speaker: 'user' | 'agent', text: string) => void;
+  onAgentRoute: (targetAgentId: string) => void;
+  onSessionEnd: () => void;
+  autoStart?: boolean;
 }
 
 export default function VoiceListener({
+  userId,
+  sessionId,
+  agentId,
+  vapiAssistantId,
   onStateChange,
-  onMessage,
-  onRouting,
+  onTranscript,
+  onAgentRoute,
+  onSessionEnd,
+  autoStart = true,
 }: VoiceListenerProps) {
-  const [voiceState, setVoiceState] = useState<VoiceState>({
-    isConnected: false,
-    isListening: false,
-    isSpeaking: false,
-    currentAgent: 'Grace',
-    error: null,
-  });
+  const vapiRef = useRef<any>(null);
+  const [initialised, setInitialised] = useState(false);
 
-  const updateState = useCallback(
-    (updates: Partial<VoiceState>) => {
-      setVoiceState(prev => {
-        const newState = { ...prev, ...updates };
-        onStateChange?.(newState);
-        return newState;
-      });
-    },
-    [onStateChange]
-  );
+  const handleCallStart = useCallback(() => {
+    onStateChange('listening');
+  }, [onStateChange]);
 
-  useEffect(() => {
-    function onVoiceStart() {
-      updateState({ isConnected: true, isListening: true, error: null });
-    }
+  const handleCallEnd = useCallback(() => {
+    onStateChange('idle');
+    onSessionEnd();
+  }, [onStateChange, onSessionEnd]);
 
-    function onVoiceEnd() {
-      updateState({ isConnected: false, isListening: false, isSpeaking: false });
-    }
+  const handleSpeechStart = useCallback(() => {
+    onStateChange('listening');
+  }, [onStateChange]);
 
-    function onAgentSpeaking(e: CustomEvent) {
-      updateState({ isSpeaking: e.detail.speaking });
-    }
+  const handleSpeechEnd = useCallback(() => {
+    onStateChange('processing');
+  }, [onStateChange]);
 
-    function onVoiceMessage(e: CustomEvent) {
-      onMessage?.(e.detail);
-
-      // Detect agent routing from message
-      if (e.detail?.type === 'function-call' && e.detail?.functionCall?.name === 'routeToAgent') {
-        const targetAgent = e.detail.functionCall.parameters?.targetAgentId;
-        if (targetAgent) {
-          onRouting?.(targetAgent);
-        }
+  const handleMessage = useCallback((message: any) => {
+    if (message.type === 'transcript') {
+      if (message.role === 'user') {
+        onTranscript('user', message.transcript);
+      } else if (message.role === 'assistant') {
+        onStateChange('speaking');
+        onTranscript('agent', message.transcript);
       }
     }
 
-    function onVoiceError(e: CustomEvent) {
-      updateState({ error: 'Voice connection issue. Tap to reconnect.', isListening: false });
+    // Agent routing signal from Vapi function call
+    if (message.type === 'function-call' && message.functionCall?.name === 'route_to_agent') {
+      const targetId = message.functionCall?.parameters?.agent_id;
+      if (targetId) onAgentRoute(targetId);
+    }
+  }, [onStateChange, onTranscript, onAgentRoute]);
+
+  const handleError = useCallback((error: any) => {
+    console.error('Vapi error:', error);
+    onStateChange('idle');
+  }, [onStateChange]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY) return;
+
+    async function initVapi() {
+      try {
+        const { default: Vapi } = await import('@vapi-ai/web');
+        const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!);
+
+        vapi.on('call-start', handleCallStart);
+        vapi.on('call-end', handleCallEnd);
+        vapi.on('speech-start', handleSpeechStart);
+        vapi.on('speech-end', handleSpeechEnd);
+        vapi.on('message', handleMessage);
+        vapi.on('error', handleError);
+
+        vapiRef.current = vapi;
+        setInitialised(true);
+
+        if (autoStart && vapiAssistantId) {
+          await vapi.start(vapiAssistantId, {
+            metadata: {
+              userId,
+              sessionId,
+              agentId,
+            },
+          });
+        }
+      } catch (err) {
+        console.error('Vapi initialisation failed:', err);
+      }
     }
 
-    window.addEventListener('precci:voice-start', onVoiceStart);
-    window.addEventListener('precci:voice-end', onVoiceEnd);
-    window.addEventListener('precci:agent-speaking', onAgentSpeaking as EventListener);
-    window.addEventListener('precci:voice-message', onVoiceMessage as EventListener);
-    window.addEventListener('precci:voice-error', onVoiceError as EventListener);
+    initVapi();
 
     return () => {
-      window.removeEventListener('precci:voice-start', onVoiceStart);
-      window.removeEventListener('precci:voice-end', onVoiceEnd);
-      window.removeEventListener('precci:agent-speaking', onAgentSpeaking as EventListener);
-      window.removeEventListener('precci:voice-message', onVoiceMessage as EventListener);
-      window.removeEventListener('precci:voice-error', onVoiceError as EventListener);
+      if (vapiRef.current) {
+        vapiRef.current.stop();
+        vapiRef.current = null;
+      }
     };
-  }, [updateState, onMessage, onRouting]);
+  }, [vapiAssistantId]);
 
-  // This component manages state only — renders nothing
+  // Expose stop/start to parent if needed
+  useEffect(() => {
+    (window as any).__cutemeVapi = vapiRef.current;
+  }, [initialised]);
+
+  // This component renders nothing visible
+  // Voice state is communicated via callbacks
   return null;
 }
