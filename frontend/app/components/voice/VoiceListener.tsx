@@ -84,7 +84,7 @@ export default function VoiceListener({
     async function initVapi() {
       try {
         const { default: Vapi } = await import('@vapi-ai/web');
-        const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!);
+        const vapi: any = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!);
 
         vapi.on('call-start', handleCallStart);
         vapi.on('call-end', handleCallEnd);

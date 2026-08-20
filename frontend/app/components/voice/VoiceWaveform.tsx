@@ -14,7 +14,7 @@ interface VoiceWaveformProps {
 }
 
 const STATE_CONFIGS = {
-  idle: { opacity: 0.2, animated: false, heights: [4, 4, 4, 4, 4, 4, 4] },
+    idle: { opacity: 0.2, animated: false, speed: '0.8s', heights: [4, 4, 4, 4, 4, 4, 4] },
   listening: { opacity: 0.5, animated: true, speed: '1.4s', heights: [8, 12, 10, 14, 10, 12, 8] },
   speaking: { opacity: 1, animated: true, speed: '0.7s', heights: [12, 20, 16, 24, 18, 14, 22] },
   processing: { opacity: 0.7, animated: true, speed: '1.0s', heights: [10, 10, 10, 10, 10, 10, 10] },

@@ -336,7 +336,7 @@ export default function PWARoot() {
       })
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+      return () => { supabase.removeChannel(channel); };
   }, [sessionId, userId, handleTryOn, handleBooking]);
 
   // ── Loading ──
@@ -503,7 +503,7 @@ export default function PWARoot() {
             </div>
             <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8 }}>
               {products.map(product => (
-                
+                <a
                   key={product.id}
                   href={product.affiliateUrl}
                   target="_blank"

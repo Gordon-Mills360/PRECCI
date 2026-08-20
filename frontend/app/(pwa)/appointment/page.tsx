@@ -113,7 +113,7 @@ export default function AppointmentPage() {
     setLoading(false);
   }
 
-  // Real-time updates
+    // Real-time updates
   useEffect(() => {
     if (!userId) return;
     const ch = supabase.channel(`appointments-${userId}`)
@@ -121,9 +121,9 @@ export default function AppointmentPage() {
         loadBookings(userId);
       })
       .subscribe();
-    return () => supabase.removeChannel(ch);
+    return () => { supabase.removeChannel(ch); };
   }, [userId]);
-
+  
   const today = new Date().toISOString().split('T')[0];
   const upcoming = bookings.filter(b => b.appointmentDate >= today && b.status !== 'cancelled');
   const past = bookings.filter(b => b.appointmentDate < today || b.status === 'cancelled');

@@ -267,9 +267,9 @@ export default function BookingPage() {
           setBookingConfirmed(true);
         }
       })
-      .subscribe();
+            .subscribe();
 
-    return () => supabase.removeChannel(ch);
+    return () => { supabase.removeChannel(ch); };
   }, [userId]);
 
   if (loading) {
