@@ -5,6 +5,7 @@
 // Grace routes here after onboarding. Specialist agents run from here.
 
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
