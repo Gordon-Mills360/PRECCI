@@ -1,0 +1,519 @@
+// FILE: precci/n8n/WF-07_connect_booking_pipeline.json
+{
+  "name": "WF-07 — PRECCI Connect Booking Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "connect-booking-trigger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-booking",
+      "name": "Booking Trigger Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "notes": "Triggered when a specialist agent session completes and client needs a real-world appointment. Session summary passed in body."
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": "public",
+        "table": "users",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.body.userId }}"
+            }
+          ]
+        },
+        "options": { "limit": 1 }
+      },
+      "id": "load-client",
+      "name": "Load Client Location Data",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-main",
+          "name": "PRECCI Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL }}/api/agents/brook/search-providers",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.INTERNAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "userId",
+              "value": "={{ $json.body.userId }}"
+            },
+            {
+              "name": "sessionId",
+              "value": "={{ $json.body.sessionId }}"
+            },
+            {
+              "name": "serviceType",
+              "value": "={{ $json.body.serviceType }}"
+            },
+            {
+              "name": "clientLat",
+              "value": "={{ $('Load Client Location Data').item.json.lat }}"
+            },
+            {
+              "name": "clientLng",
+              "value": "={{ $('Load Client Location Data').item.json.lng }}"
+            },
+            {
+              "name": "clientCity",
+              "value": "={{ $('Load Client Location Data').item.json.city }}"
+            },
+            {
+              "name": "sessionSummary",
+              "value": "={{ $json.body.sessionSummary }}"
+            },
+            {
+              "name": "genderContext",
+              "value": "={{ $json.body.genderContext || 'all' }}"
+            },
+            {
+              "name": "sessionType",
+              "value": "client_booking"
+            }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "brook-search",
+      "name": "Brook — Search Nearby Providers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "providers-found",
+              "leftValue": "={{ $json.found }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "providers-available",
+      "name": "Providers Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL }}/api/bookings/verify-slot",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.INTERNAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "providerId",
+              "value": "={{ $json.body.confirmedProviderId }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.body.confirmedDate }}"
+            },
+            {
+              "name": "timeSlot",
+              "value": "={{ $json.body.confirmedTime }}"
+            }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "verify-slot",
+      "name": "Verify Slot Still Available",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "slot-available",
+              "leftValue": "={{ $json.available }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "slot-check",
+      "name": "Slot Still Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL }}/api/bookings/confirm",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.INTERNAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "clientUserId",
+              "value": "={{ $json.body.userId }}"
+            },
+            {
+              "name": "providerId",
+              "value": "={{ $json.body.confirmedProviderId }}"
+            },
+            {
+              "name": "bookingSlotId",
+              "value": "={{ $json.slotId }}"
+            },
+            {
+              "name": "appointmentDate",
+              "value": "={{ $json.body.confirmedDate }}"
+            },
+            {
+              "name": "appointmentTime",
+              "value": "={{ $json.body.confirmedTime }}"
+            },
+            {
+              "name": "servicesRequested",
+              "value": "={{ $json.body.servicesRequested }}"
+            },
+            {
+              "name": "sessionSummary",
+              "value": "={{ $json.body.sessionSummary }}"
+            },
+            {
+              "name": "precciAnalysisSummary",
+              "value": "={{ $json.body.analysisForProvider }}"
+            },
+            {
+              "name": "clientConsentToShareName",
+              "value": "={{ $json.body.clientConsentToShareName || true }}"
+            }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "confirm-booking",
+      "name": "Brook — Confirm Booking & Generate Code",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 120]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL }}/api/providers/notify-voice",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.INTERNAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "providerId",
+              "value": "={{ $json.body.confirmedProviderId }}"
+            },
+            {
+              "name": "bookingId",
+              "value": "={{ $('Brook — Confirm Booking & Generate Code').item.json.bookingId }}"
+            },
+            {
+              "name": "appointmentCode",
+              "value": "={{ $('Brook — Confirm Booking & Generate Code').item.json.appointmentCode }}"
+            },
+            {
+              "name": "appointmentDate",
+              "value": "={{ $json.body.confirmedDate }}"
+            },
+            {
+              "name": "appointmentTime",
+              "value": "={{ $json.body.confirmedTime }}"
+            },
+            {
+              "name": "servicesRequested",
+              "value": "={{ $json.body.servicesRequested }}"
+            },
+            {
+              "name": "analysisForProvider",
+              "value": "={{ $json.body.analysisForProvider }}"
+            }
+          ]
+        },
+        "options": { "timeout": 20000 }
+      },
+      "id": "notify-provider",
+      "name": "Brook — Activate Provider Voice Agent Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 120]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.BACKEND_URL }}/api/bookings/generate-briefs",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.INTERNAL_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "bookingId",
+              "value": "={{ $('Brook — Confirm Booking & Generate Code').item.json.bookingId }}"
+            },
+            {
+              "name": "appointmentCode",
+              "value": "={{ $('Brook — Confirm Booking & Generate Code').item.json.appointmentCode }}"
+            }
+          ]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "generate-briefs",
+      "name": "Brook — Generate Client & Provider PDF Briefs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 280]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "revenue_summary",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ new Date().toISOString().split('T')[0] }}",
+            "stream": "provider_referral_fees",
+            "amount": "={{ $('Brook — Confirm Booking & Generate Code').item.json.referralFeeCharged }}",
+            "currency": "USD",
+            "transaction_count": 1,
+            "notes": "Booking referral fee — {{ $json.body.confirmedProviderId }}",
+            "created_at": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "celeste-referral-fee",
+      "name": "Celeste — Log Referral Fee Revenue",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1780, 440],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-main",
+          "name": "PRECCI Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "alerts",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "type": "brook_booking_confirmed",
+            "message": "Brook: Booking confirmed — Code {{ $('Brook — Confirm Booking & Generate Code').item.json.appointmentCode }} — Fee ${{ $('Brook — Confirm Booking & Generate Code').item.json.referralFeeCharged }}",
+            "severity": "info",
+            "agent_id": "PC-027",
+            "metadata": "={{ JSON.stringify({ bookingId: $('Brook — Confirm Booking & Generate Code').item.json.bookingId, appointmentCode: $('Brook — Confirm Booking & Generate Code').item.json.appointmentCode, providerId: $json.body.confirmedProviderId, userId: $json.body.userId, referralFee: $('Brook — Confirm Booking & Generate Code').item.json.referralFeeCharged }) }}",
+            "created_at": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-booking-complete",
+      "name": "Log Booking to Activity Feed",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1780, 600],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-main",
+          "name": "PRECCI Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "alerts",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "type": "brook_no_providers",
+            "message": "Brook: No providers found for {{ $json.body.serviceType }} near {{ $('Load Client Location Data').item.json.city }}",
+            "severity": "info",
+            "agent_id": "PC-027",
+            "metadata": "={{ JSON.stringify({ userId: $json.body.userId, serviceType: $json.body.serviceType, city: $('Load Client Location Data').item.json.city }) }}",
+            "created_at": "={{ new Date().toISOString() }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-no-providers",
+      "name": "Log No Providers Found",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1120, 440],
+      "credentials": {
+        "supabaseApi": {
+          "id": "supabase-main",
+          "name": "PRECCI Supabase"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, bookingId: $('Brook — Confirm Booking & Generate Code').item.json.bookingId, appointmentCode: $('Brook — Confirm Booking & Generate Code').item.json.appointmentCode }) }}"
+      },
+      "id": "booking-response",
+      "name": "Booking Confirmed Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 740]
+    }
+  ],
+  "connections": {
+    "Booking Trigger Webhook": {
+      "main": [
+        [{ "node": "Load Client Location Data", "type": "main", "index": 0 }]
+      ]
+    },
+    "Load Client Location Data": {
+      "main": [
+        [{ "node": "Brook — Search Nearby Providers", "type": "main", "index": 0 }]
+      ]
+    },
+    "Brook — Search Nearby Providers": {
+      "main": [
+        [{ "node": "Providers Available?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Providers Available?": {
+      "main": [
+        [{ "node": "Verify Slot Still Available", "type": "main", "index": 0 }],
+        [{ "node": "Log No Providers Found", "type": "main", "index": 0 }]
+      ]
+    },
+    "Verify Slot Still Available": {
+      "main": [
+        [{ "node": "Slot Still Available?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Slot Still Available?": {
+      "main": [
+        [{ "node": "Brook — Confirm Booking & Generate Code", "type": "main", "index": 0 }],
+        [{ "node": "Brook — Search Nearby Providers", "type": "main", "index": 0 }]
+      ]
+    },
+    "Brook — Confirm Booking & Generate Code": {
+      "main": [
+        [
+          { "node": "Brook — Activate Provider Voice Agent Notification", "type": "main", "index": 0 },
+          { "node": "Brook — Generate Client & Provider PDF Briefs", "type": "main", "index": 0 },
+          { "node": "Celeste — Log Referral Fee Revenue", "type": "main", "index": 0 },
+          { "node": "Log Booking to Activity Feed", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Log Booking to Activity Feed": {
+      "main": [
+        [{ "node": "Booking Confirmed Response", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "errorWorkflow": "WF-ERROR-HANDLER"
+  },
+  "tags": ["cuteme", "connect", "booking", "brook", "provider", "celeste"],
+  "active": true
+}
