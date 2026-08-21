@@ -133,8 +133,8 @@ export default function ProviderProfilePage() {
               <span style={{ fontSize: 11, color: C.textSec }}>{row.value}</span>
             </div>
           ))}
-          <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
-            <StatusBadge status={provider.verified ? 'operational' : 'waiting'} label={provider.verified ? 'Verified' : 'Awaiting Verification'} size="sm" />
+                   <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+            <StatusBadge status={provider.verified ? 'operational' : 'busy'} label={provider.verified ? 'Verified' : 'Awaiting Verification'} size="sm" />
             <StatusBadge status={provider.active ? 'online' : 'offline'} label={provider.active ? 'Active' : 'Inactive'} size="sm" />
           </div>
         </div>

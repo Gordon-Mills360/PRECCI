@@ -222,7 +222,7 @@ export default function ProviderDashboardPage() {
       })
       .subscribe();
 
-    return () => supabase.removeChannel(ch);
+    return () => { supabase.removeChannel(ch); };
   }, [providerId, loadData]);
 
   // Provider voice agent
@@ -231,6 +231,7 @@ export default function ProviderDashboardPage() {
     if (typeof window === 'undefined') return;
     if (!process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY) return;
 
+        const currentProvider = provider;
     let vapi: any;
 
     async function initVapi() {
@@ -246,10 +247,10 @@ export default function ProviderDashboardPage() {
         });
         vapi.on('error', () => setVoiceState('idle'));
 
-        await vapi.start(provider.vapiAssistantId!, {
+        await vapi.start(currentProvider.vapiAssistantId!, {
           metadata: {
             providerId,
-            businessName: provider.businessName,
+            businessName: currentProvider.businessName,
             upcomingBookings: upcomingBookings.length,
             context: 'provider_dashboard',
           },
@@ -312,7 +313,7 @@ export default function ProviderDashboardPage() {
         <div>
           <div style={{ fontSize: 16, fontWeight: 800, color: C.roseGold }}>{provider?.businessName}</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-            <StatusBadge status={provider?.verified ? 'operational' : 'waiting'} label={provider?.verified ? 'Verified' : 'Pending Verification'} size="sm" />
+         <StatusBadge status={provider?.verified ? 'operational' : 'busy'} label={provider?.verified ? 'Verified' : 'Pending Verification'} size="sm" />
             <span style={{ fontSize: 9, color: C.textMuted, textTransform: 'capitalize' }}>{provider?.subscriptionTier} Plan</span>
             {provider?.featured && <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 9999, background: `${C.warmGold}22`, color: C.warmGold, fontWeight: 700 }}>FEATURED</span>}
           </div>
@@ -320,7 +321,7 @@ export default function ProviderDashboardPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <VoiceWaveform state={voiceState} colour={C.roseGold} barCount={5} height={18} />
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: C.white }}>{'★'.repeat(Math.round(provider?.rating || 0))} {provider?.rating.toFixed(1)}</div>
+        <div style={{ fontSize: 16, fontWeight: 800, color: C.white }}>{'★'.repeat(Math.round(provider?.rating || 0))} {(provider?.rating || 0).toFixed(1)}</div>
             <div style={{ fontSize: 9, color: C.textMuted }}>{provider?.totalBookings} total bookings</div>
           </div>
         </div>

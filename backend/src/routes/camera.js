@@ -1,215 +1,199 @@
 // FILE: precci/backend/src/routes/camera.js
-// Camera analysis routes.
-// SECURITY: All vision processing server-side only.
+// CUTEME LTD — Camera Analysis Routes
+// Receives frames from client PWA.
+// Sends to Claude Vision API server-side.
+// Returns structured analysis to specialist agents.
 // Frames never stored without explicit consent.
-// Rate limited to 20 requests per minute.
 
 'use strict';
 
 const express = require('express');
-const { captureAndAnalyse } = require('../services/camera.service');
-const { getSageDataForSession } = require('../services/sage.service');
+const router = express.Router();
+const Anthropic = require('@anthropic-ai/sdk');
+const { verifyJWT } = require('../middleware/auth');
+const { cameraLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
-const { verifyToken, requireRole } = require('../middleware/auth');
-const { validateCameraFrame, cameraLimiter } = require('../middleware/security');
-const { asyncHandler, PrecciError } = require('../middleware/errorHandler');
+const { processSageEnvironment } = require('../services/sage.service');
 const logger = require('../utils/logger');
 
-const router = express.Router();
-
-// ─────────────────────────────────────────────
 // POST /api/camera/analyse
-// Main camera analysis endpoint
-// Validates consent, processes frame, returns analysis
-// ─────────────────────────────────────────────
-router.post(
-  '/analyse',
-  verifyToken,
-  requireRole(['client']),
-  validateCameraFrame,
-  asyncHandler(async (req, res) => {
-    const { agentId, sessionId } = req.body;
-    const userId = req.user.id;
+// Receive base64 frame → Claude Vision → return analysis
+router.post('/analyse', verifyJWT, cameraLimiter, async (req, res) => {
+  const supabase = getServiceClient();
 
-    if (!agentId) {
-      throw new PrecciError('VALIDATION_ERROR', 'agentId is required', 400);
-    }
+  const {
+    frameBase64,
+    mimeType = 'image/jpeg',
+    agentId,
+    sessionId,
+  } = sanitiseInput(req.body);
 
-    const validAgents = ['PC-008', 'PC-009', 'PC-010', 'PC-011', 'PC-013', 'PC-014', 'PC-016'];
-    if (!validAgents.includes(agentId)) {
-      throw new PrecciError('VALIDATION_ERROR', 'Invalid agent ID for camera analysis', 400);
-    }
+  if (!frameBase64) {
+    return res.status(400).json({ success: false, error: 'frameBase64 is required' });
+  }
 
-    // Load user profile and sage data in parallel
-    const supabase = getServiceClient();
+  if (!agentId || !sessionId) {
+    return res.status(400).json({ success: false, error: 'agentId and sessionId are required' });
+  }
 
-    const [profileResult, sageResult] = await Promise.allSettled([
-      supabase
-        .from('beauty_profiles')
-        .select('skin_type, skin_tone, hair_type, skin_concerns, grooming_prefs, appearance_goals')
-        .eq('user_id', userId)
-        .single(),
-      supabase
-        .from('users')
-        .select('lat, lng')
-        .eq('id', userId)
-        .single(),
-    ]);
+  // Validate frame size — max 5MB
+  const frameSizeBytes = Buffer.byteLength(frameBase64, 'base64');
+  if (frameSizeBytes > 5 * 1024 * 1024) {
+    return res.status(400).json({ success: false, error: 'Frame too large. Maximum 5MB.' });
+  }
 
-    const userProfile = profileResult.status === 'fulfilled'
-      ? profileResult.value.data
-      : {};
+  // Check camera consent
+  const { data: session } = await supabase
+    .from('sessions')
+    .select('camera_consent')
+    .eq('id', sessionId)
+    .single();
 
-    const userLocation = sageResult.status === 'fulfilled'
-      ? sageResult.value.data
-      : null;
+  const hasConsent = session?.camera_consent !== false;
+  if (!hasConsent) {
+    return res.status(403).json({ success: false, error: 'Camera consent not given for this session' });
+  }
 
-    // Get Sage environmental data
-    let sageData = {};
-    if (userLocation?.lat && userLocation?.lng) {
-      sageData = await getSageDataForSession(userLocation.lat, userLocation.lng);
-    }
+  try {
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // Run camera analysis
-    const analysis = await captureAndAnalyse({
-      frameBase64: req.cameraFrame,
-      userId,
-      agentId,
-      userProfile,
-      sageData,
+    // Agent-specific vision prompts
+    const VISION_PROMPTS = {
+      'PC-008': `You are Luna, CUTEME LTD's AI Skin Analyst. Analyse this face image in detail.
+        Identify: skin type (oily/dry/combination/normal/sensitive), skin tone, undertone (warm/cool/neutral),
+        visible concerns (hyperpigmentation, acne, redness, dryness, dehydration, pores, texture),
+        beard area skin condition if present, razor bumps or ingrown hairs if present.
+        Return a structured JSON analysis with: skinType, skinTone, undertone, concerns[], hydrationLevel,
+        oilinessLevel, beardAreaConcerns, overallCondition, analysisConfidence.`,
+
+      'PC-009': `You are Zara, CUTEME LTD's Hair Expert. Analyse the hair visible in this image.
+        Identify: hair type (1A through 4C Andre Walker scale), texture, density, estimated length,
+        visible scalp condition, signs of damage or breakage, moisture level, current style.
+        For short hair: assess fade quality, haircut shape, neckline condition.
+        Return JSON: hairType, texture, density, length, scalpCondition, damageLevel,
+        moistureLevel, currentStyle, recommendedStyles[], analysisConfidence.`,
+
+      'PC-010': `You are Mia, CUTEME LTD's Makeup and Grooming specialist. Analyse the facial features visible.
+        Identify: face shape, facial proportions, eye shape, lip shape, brow shape, undertone,
+        any current makeup or grooming products visible.
+        Return JSON: faceShape, eyeShape, lipShape, browShape, undertone,
+        currentMakeup, currentGrooming, recommendedLooks[], analysisConfidence.`,
+
+      'PC-011': `You are Isla, CUTEME LTD's Style Advisor. Analyse the body proportions visible in this image.
+        Identify: body shape category, visible proportions (shoulder width, waist, hip ratio),
+        estimated height category, any visible clothing style currently worn.
+        Return JSON: bodyShape, proportions, heightCategory, currentStyle,
+        recommendedStyles[], colourSeasonEstimate, analysisConfidence.`,
+
+      'PC-014': `You are Drew, CUTEME LTD's Male Grooming Specialist. Analyse the face and grooming visible.
+        Identify: face shape for beard recommendations, beard growth pattern, beard density,
+        beard current condition, skin type in beard area, haircut shape if visible.
+        Return JSON: faceShape, beardGrowthPattern, beardDensity, beardCondition,
+        beardAreaSkinCondition, recommendedBeardStyles[], haircut, analysisConfidence.`,
+
+      'PC-013': `You are Cora, CUTEME LTD's Body Care Specialist. Analyse any visible body skin.
+        Identify: visible body skin condition, tone evenness, any areas of dryness or hyperpigmentation.
+        Return JSON: skinCondition, toneEvenness, visibleConcerns[], recommendations[], analysisConfidence.`,
+    };
+
+    const visionPrompt = VISION_PROMPTS[agentId] ||
+      `Analyse this image and describe what you see about the person's appearance relevant to beauty and style. Return structured JSON.`;
+
+    const response = await client.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-opus-4-5',
+      max_tokens: parseInt(process.env.CLAUDE_VISION_MAX_TOKENS) || 2048,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mimeType,
+                data: frameBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: visionPrompt + '\n\nReturn ONLY valid JSON. No markdown. No explanations outside the JSON.',
+            },
+          ],
+        },
+      ],
     });
+
+    const analysisText = response.content
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('');
+
+    let analysisData = {};
+    try {
+      const cleanJson = analysisText.replace(/```json|```/g, '').trim();
+      analysisData = JSON.parse(cleanJson);
+    } catch {
+      // If JSON parse fails, return raw text
+      analysisData = { rawAnalysis: analysisText, parseError: true };
+    }
+
+    // Update session with camera_used flag
+    await supabase
+      .from('sessions')
+      .update({
+        camera_used: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId)
+      .catch(() => {});
+
+    // Log camera analysis to alerts feed
+    await supabase.from('alerts').insert({
+      type: `${agentId.toLowerCase().replace('pc-', 'agent')}_camera_analysis`,
+      message: `${agentId}: Camera analysis complete for session ${sessionId.substring(0, 12)}`,
+      severity: 'info',
+      agent_id: agentId,
+      created_at: new Date().toISOString(),
+    }).catch(() => {});
 
     res.json({
       success: true,
-      analysis: analysis.analysis,
-      metadata: analysis.metadata,
-      sageContext: sageData,
-      analysedAt: analysis.analysedAt,
+      agentId,
+      sessionId,
+      data: analysisData,
+      analysisTimestamp: new Date().toISOString(),
     });
-  })
-);
+  } catch (error) {
+    logger.error('Camera analysis error', { agentId, error: error.message });
+    res.status(500).json({ success: false, error: 'Camera analysis failed' });
+  }
+});
 
-// ─────────────────────────────────────────────
 // POST /api/camera/consent
-// Update camera consent for user
-// ─────────────────────────────────────────────
-router.post(
-  '/consent',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const { consent } = req.body;
+// Record camera consent for a session
+router.post('/consent', verifyJWT, async (req, res) => {
+  const supabase = getServiceClient();
+  const { sessionId, consent } = sanitiseInput(req.body);
 
-    if (typeof consent !== 'boolean') {
-      throw new PrecciError('VALIDATION_ERROR', 'consent must be a boolean', 400);
-    }
+  if (!sessionId || typeof consent !== 'boolean') {
+    return res.status(400).json({ success: false, error: 'sessionId and consent (boolean) required' });
+  }
 
-    const supabase = getServiceClient();
-
+  try {
     await supabase
-      .from('users')
+      .from('sessions')
       .update({
         camera_consent: consent,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', req.user.id);
+      .eq('id', sessionId)
+      .eq('user_id', req.user.id);
 
-    res.json({
-      success: true,
-      cameraConsent: consent,
-    });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/camera/status
-// Returns camera system status for Marcus monitoring
-// ─────────────────────────────────────────────
-router.get(
-  '/status',
-  verifyToken,
-  requireRole(['precious_owner']),
-  asyncHandler(async (req, res) => {
-    res.json({
-      success: true,
-      status: 'operational',
-      agents: ['PC-008', 'PC-009', 'PC-010', 'PC-011', 'PC-013', 'PC-014'],
-      capabilities: {
-        skinAnalysis: true,
-        hairAnalysis: true,
-        bodyAnalysis: true,
-        groomingAnalysis: true,
-        virtualTryOn: !!process.env.REPLICATE_API_TOKEN,
-      },
-    });
-  })
-);
-
-// ─────────────────────────────────────────────
-// POST /api/camera/simulate
-// Belle virtual try-on endpoint
-// ─────────────────────────────────────────────
-router.post(
-  '/simulate',
-  verifyToken,
-  requireRole(['client']),
-  validateCameraFrame,
-  asyncHandler(async (req, res) => {
-    const { lookType, description, sessionId, skinTone, hairType } = req.body;
-    const userId = req.user.id;
-
-    if (!lookType || !description) {
-      throw new PrecciError('VALIDATION_ERROR', 'lookType and description are required', 400);
-    }
-
-    const { generateSimulation } = require('../services/belle.service');
-
-    const simulation = await generateSimulation({
-      frameBase64: req.cameraFrame,
-      lookData: {
-        lookType,
-        description,
-        skinTone,
-        hairType,
-        agentId: 'PC-016',
-      },
-      userId,
-      sessionId,
-    });
-
-    res.json({
-      success: true,
-      simulation,
-    });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/camera/simulations
-// Returns client's try-on history
-// ─────────────────────────────────────────────
-router.get(
-  '/simulations',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-
-    const { data, error } = await supabase
-      .from('try_on_history')
-      .select('id, look_type, look_description, proxied_url, saved, expires_at, created_at')
-      .eq('user_id', req.user.id)
-      .gt('expires_at', new Date().toISOString())
-      .order('created_at', { ascending: false })
-      .limit(20);
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to retrieve simulations', 500);
-    }
-
-    res.json({
-      success: true,
-      simulations: data || [],
-    });
-  })
-);
+    res.json({ success: true, consent });
+  } catch (error) {
+    logger.error('Camera consent error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to record consent' });
+  }
+});
 
 module.exports = router;

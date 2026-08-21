@@ -1,4 +1,4 @@
-// FILE: precci/n8n/WF-07_connect_booking_pipeline.json
+
 {
   "name": "WF-07 — PRECCI Connect Booking Pipeline",
   "nodes": [

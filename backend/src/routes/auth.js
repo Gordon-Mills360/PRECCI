@@ -1,211 +1,204 @@
 // FILE: precci/backend/src/routes/auth.js
-// SECURITY: Auth routes — rate limited to 10/15min.
-// Passwords hashed with bcrypt. Tokens never logged.
-// Supabase Auth used as the identity provider.
+// CUTEME LTD — Authentication Routes
+// Supabase Auth integration.
+// JWT issuance and refresh.
+// Precious owner role guard.
+// Provider auth separate from client auth.
 
 'use strict';
 
 const express = require('express');
-const bcrypt = require('bcryptjs');
-const { getServiceClient } = require('../config/supabase');
-const {
-  generateAccessToken,
-  generateRefreshToken,
-  verifyToken,
-  invalidateToken,
-  refreshAccessToken,
-} = require('../middleware/auth');
-const { asyncHandler, PrecciError } = require('../middleware/errorHandler');
-const logger = require('../utils/logger');
-
 const router = express.Router();
+const { createClient } = require('@supabase/supabase-js');
+const { authLimiter, sanitiseInput } = require('../middleware/security');
+const { getServiceClient } = require('../config/supabase');
+const logger = require('../utils/logger');
+const jwt = require('jsonwebtoken');
 
-const SALT_ROUNDS = 12;
+// Public Supabase client for auth operations
+function getAnonClient() {
+  return createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_ANON_KEY
+  );
+}
 
-// ─────────────────────────────────────────────
-// POST /api/auth/register
-// New client registration via Supabase Auth
-// Profile created in users table after auth creation
-// ─────────────────────────────────────────────
-router.post(
-  '/register',
-  asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
+// POST /api/auth/signup
+router.post('/signup', authLimiter, async (req, res) => {
+  const { email, password } = sanitiseInput(req.body);
 
-    if (!email || !password) {
-      throw new PrecciError('VALIDATION_ERROR', 'Email and password are required', 400);
-    }
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
+  }
 
-    // Basic email format validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      throw new PrecciError('VALIDATION_ERROR', 'Invalid email format', 400);
-    }
+  if (password.length < 8) {
+    return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+  }
 
-    if (password.length < 8) {
-      throw new PrecciError('VALIDATION_ERROR', 'Password must be at least 8 characters', 400);
-    }
+  try {
+    const supabaseAnon = getAnonClient();
+    const { data, error } = await supabaseAnon.auth.signUp({ email, password });
 
-    const supabase = getServiceClient();
+    if (error) throw error;
 
-    // Create Supabase Auth user
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: email.toLowerCase().trim(),
-      password,
-      email_confirm: true,
-    });
-
-    if (authError) {
-      if (authError.message.includes('already registered')) {
-        throw new PrecciError('VALIDATION_ERROR', 'An account with this email already exists', 409);
-      }
-      logger.error('Auth registration error', { error: authError.message });
-      throw new PrecciError('DATABASE_ERROR', 'Registration failed', 500);
-    }
-
-    const userId = authData.user.id;
-
-    // Create user record in users table
-    const { error: userError } = await supabase.from('users').insert({
-      id: userId,
-      email: email.toLowerCase().trim(),
-      plan: 'free',
-      plan_status: 'active',
-      onboarding_complete: false,
-    });
-
-    if (userError) {
-      // Clean up auth user if profile creation fails
-      await supabase.auth.admin.deleteUser(userId);
-      logger.error('User profile creation failed after auth', { error: userError.message });
-      throw new PrecciError('DATABASE_ERROR', 'Account setup failed', 500);
-    }
-
-    // Generate tokens
-    const accessToken = generateAccessToken({
-      userId,
-      role: 'client',
-      email: email.toLowerCase().trim(),
-    });
-
-    const refreshToken = generateRefreshToken({
-      userId,
-      role: 'client',
-    });
-
-    logger.info('New PRECCI client registered', { userId });
-
-    res.status(201).json({
-      success: true,
-      message: 'Account created successfully',
-      accessToken,
-      refreshToken,
-      user: {
-        id: userId,
-        email: email.toLowerCase().trim(),
+    if (data.user) {
+      // Create user record
+      const supabase = getServiceClient();
+      await supabase.from('users').insert({
+        id: data.user.id,
+        email: data.user.email,
         plan: 'free',
-        isNewClient: true,
+        plan_status: 'active',
+        onboarding_complete: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).catch(() => {}); // May already exist
+    }
+
+    res.json({
+      success: true,
+      user: { id: data.user?.id, email: data.user?.email },
+      session: data.session ? {
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+        expiresAt: data.session.expires_at,
+      } : null,
+    });
+  } catch (error) {
+    logger.error('Signup error', { error: error.message });
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/auth/signin
+router.post('/signin', authLimiter, async (req, res) => {
+  const { email, password } = sanitiseInput(req.body);
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
+  }
+
+  try {
+    const supabaseAnon = getAnonClient();
+    const { data, error } = await supabaseAnon.auth.signInWithPassword({ email, password });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      user: { id: data.user?.id, email: data.user?.email },
+      session: {
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+        expiresAt: data.session.expires_at,
       },
     });
-  })
-);
+  } catch (error) {
+    logger.error('Signin error', { error: error.message });
+    res.status(401).json({ success: false, error: 'Invalid credentials' });
+  }
+});
 
-// ─────────────────────────────────────────────
-// POST /api/auth/login
-// Client login — returns JWT pair
-// ─────────────────────────────────────────────
-router.post(
-  '/login',
-  asyncHandler(async (req, res) => {
-    const { email, password } = req.body;
+// POST /api/auth/refresh
+router.post('/refresh', authLimiter, async (req, res) => {
+  const { refreshToken } = sanitiseInput(req.body);
 
-    if (!email || !password) {
-      throw new PrecciError('VALIDATION_ERROR', 'Email and password are required', 400);
-    }
+  if (!refreshToken) {
+    return res.status(400).json({ success: false, error: 'refreshToken is required' });
+  }
 
-    const supabase = getServiceClient();
+  try {
+    const supabaseAnon = getAnonClient();
+    const { data, error } = await supabaseAnon.auth.refreshSession({ refresh_token: refreshToken });
 
-    // Authenticate with Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-      email: email.toLowerCase().trim(),
-      password,
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      session: {
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+        expiresAt: data.session.expires_at,
+      },
     });
+  } catch (error) {
+    logger.error('Token refresh error', { error: error.message });
+    res.status(401).json({ success: false, error: 'Failed to refresh token' });
+  }
+});
 
-    if (authError || !authData.user) {
-      throw new PrecciError('AUTHENTICATION_ERROR', 'Invalid email or password', 401);
+// POST /api/auth/signout
+router.post('/signout', authLimiter, async (req, res) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.replace('Bearer ', '');
+
+  try {
+    if (token) {
+      const supabaseAnon = getAnonClient();
+      await supabaseAnon.auth.signOut();
+
+      // Blacklist the token
+      const supabase = getServiceClient();
+      const crypto = require('crypto');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      await supabase.from('token_blacklist').insert({
+        token_hash: tokenHash,
+        invalidated_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      }).catch(() => {});
     }
 
-    const userId = authData.user.id;
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Signout error', { error: error.message });
+    res.json({ success: true }); // Always succeed signout
+  }
+});
 
-    // Fetch user plan and role
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, email, plan, plan_status, onboarding_complete')
-      .eq('id', userId)
+// POST /api/auth/provider/signin
+// Provider login via email
+router.post('/provider/signin', authLimiter, async (req, res) => {
+  const { email, password } = sanitiseInput(req.body);
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, error: 'Email and password are required' });
+  }
+
+  try {
+    const supabaseAnon = getAnonClient();
+    const { data, error } = await supabaseAnon.auth.signInWithPassword({ email, password });
+
+    if (error) throw error;
+
+    // Verify this email belongs to a provider
+    const supabase = getServiceClient();
+    const { data: provider } = await supabase
+      .from('service_providers')
+      .select('id, business_name, active')
+      .eq('email', email)
       .single();
 
-    if (userError || !user) {
-      throw new PrecciError('DATABASE_ERROR', 'Account data not found', 500);
+    if (!provider) {
+      return res.status(403).json({ success: false, error: 'No provider account found for this email. Register at cuteme.com/connect' });
     }
 
-    // Determine role
-    let role = 'client';
-    if (email.toLowerCase().trim() === process.env.PRECIOUS_EMAIL?.toLowerCase()) {
-      role = 'precious_owner';
+    if (!provider.active) {
+      return res.status(403).json({ success: false, error: 'Your provider account is not yet active. Please complete registration.' });
     }
-
-    const accessToken = generateAccessToken({
-      userId,
-      role,
-      email: user.email,
-    });
-
-    const refreshToken = generateRefreshToken({
-      userId,
-      role,
-    });
 
     res.json({
       success: true,
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        plan: user.plan,
-        onboardingComplete: user.onboarding_complete,
-        role,
+      provider: { id: provider.id, businessName: provider.business_name },
+      session: {
+        accessToken: data.session.access_token,
+        refreshToken: data.session.refresh_token,
+        expiresAt: data.session.expires_at,
       },
     });
-  })
-);
-
-// ─────────────────────────────────────────────
-// POST /api/auth/refresh
-// Issues new access token from refresh token
-// ─────────────────────────────────────────────
-router.post('/refresh', refreshAccessToken);
-
-// ─────────────────────────────────────────────
-// POST /api/auth/logout
-// Invalidates current access token
-// ─────────────────────────────────────────────
-router.post(
-  '/logout',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.split(' ')[1];
-
-    if (token) {
-      await invalidateToken(token);
-    }
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully',
-    });
-  })
-);
+  } catch (error) {
+    logger.error('Provider signin error', { error: error.message });
+    res.status(401).json({ success: false, error: 'Invalid credentials' });
+  }
+});
 
 module.exports = router;

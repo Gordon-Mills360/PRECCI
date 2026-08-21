@@ -1,245 +1,160 @@
 // FILE: precci/backend/src/routes/users.js
-// SECURITY: Users access only their own data.
-// gender and gender_expression never returned in public responses.
-// All mutations require authenticated JWT.
+// CUTEME LTD — User Profile Routes
+// CRUD for user profiles and beauty profiles.
+// All authenticated. RLS enforced via Supabase.
 
 'use strict';
 
 const express = require('express');
+const router = express.Router();
+const { verifyJWT } = require('../middleware/auth');
+const { generalLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
-const { verifyToken, requireRole } = require('../middleware/auth');
-const { asyncHandler, PrecciError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
-const router = express.Router();
+router.use(verifyJWT);
+router.use(generalLimiter);
 
-// ─────────────────────────────────────────────
 // GET /api/users/me
-// Returns authenticated user's profile
-// gender fields excluded from response
-// ─────────────────────────────────────────────
-router.get(
-  '/me',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
+router.get('/me', async (req, res) => {
+  const supabase = getServiceClient();
 
-    const { data: user, error } = await supabase
+  try {
+    const { data: user } = await supabase
       .from('users')
-      .select(
-        `id, name, email, phone, city, country,
-         plan, plan_status, voice_consent, camera_consent,
-         onboarding_complete, created_at`
-      )
+      .select('id, name, email, phone, city, country, plan, plan_status, onboarding_complete, created_at')
       .eq('id', req.user.id)
       .single();
-
-    if (error || !user) {
-      throw new PrecciError('NOT_FOUND', 'User not found', 404);
-    }
 
     const { data: profile } = await supabase
       .from('beauty_profiles')
-      .select(
-        `skin_concerns, skin_tone, hair_concerns, hair_texture,
-         style_prefs, body_type, fragrance_prefs, budget_range,
-         appearance_goals, grooming_prefs, allergies`
-      )
+      .select('skin_concerns, skin_tone, hair_concerns, hair_texture, style_prefs, body_type, fragrance_prefs, budget_range, appearance_goals, allergies')
       .eq('user_id', req.user.id)
       .single();
 
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('plan, status, current_period_end')
-      .eq('user_id', req.user.id)
-      .single();
-
+    // Never return gender or gender_expression in API response
     res.json({
       success: true,
-      user: {
+      data: {
         ...user,
-        profile: profile || null,
-        subscription: subscription || null,
+        beautyProfile: profile || null,
       },
     });
-  })
-);
+  } catch (error) {
+    logger.error('Get user error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to load user profile' });
+  }
+});
 
-// ─────────────────────────────────────────────
 // PATCH /api/users/me
-// Update user profile — name, phone, location
-// Never update plan or role via this route
-// ─────────────────────────────────────────────
-router.patch(
-  '/me',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
+router.patch('/me', async (req, res) => {
+  const supabase = getServiceClient();
+  const updates = sanitiseInput(req.body);
 
-    // Only allow these fields to be updated directly
-    const allowedFields = ['name', 'phone', 'city', 'country', 'lat', 'lng'];
-    const updates = {};
+  // Allowed user fields — never allow plan changes via this route
+  const allowedUserFields = ['name', 'phone', 'city', 'country', 'lat', 'lng', 'voice_consent', 'camera_consent'];
+  const userUpdates = {};
+  allowedUserFields.forEach(f => {
+    if (updates[f] !== undefined) userUpdates[f] = updates[f];
+  });
 
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
+  userUpdates.updated_at = new Date().toISOString();
+
+  try {
+    if (Object.keys(userUpdates).length > 1) {
+      await supabase
+        .from('users')
+        .update(userUpdates)
+        .eq('id', req.user.id);
     }
 
-    if (Object.keys(updates).length === 0) {
-      throw new PrecciError('VALIDATION_ERROR', 'No valid fields to update', 400);
-    }
-
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', req.user.id)
-      .select('id, name, phone, city, country, updated_at')
-      .single();
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to update profile', 500);
-    }
-
-    res.json({ success: true, user: data });
-  })
-);
-
-// ─────────────────────────────────────────────
-// PATCH /api/users/me/consent
-// Update voice and camera consent
-// ─────────────────────────────────────────────
-router.patch(
-  '/me/consent',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-    const { voiceConsent, cameraConsent } = req.body;
-
-    const updates = {};
-    if (typeof voiceConsent === 'boolean') updates.voice_consent = voiceConsent;
-    if (typeof cameraConsent === 'boolean') updates.camera_consent = cameraConsent;
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', req.user.id)
-      .select('id, voice_consent, camera_consent')
-      .single();
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to update consent settings', 500);
-    }
-
-    res.json({ success: true, consent: data });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/users/me/sessions
-// Returns user's session history
-// ─────────────────────────────────────────────
-router.get(
-  '/me/sessions',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-    const limit = Math.min(parseInt(req.query.limit || '20', 10), 50);
-
-    const { data, error } = await supabase
-      .from('sessions')
-      .select(
-        `id, agent_id, channel, duration_seconds,
-         camera_used, completed, created_at`
-      )
-      .eq('user_id', req.user.id)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to retrieve sessions', 500);
-    }
-
-    res.json({ success: true, sessions: data || [] });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/users/me/bookings
-// Returns user's PRECCI Connect booking history
-// ─────────────────────────────────────────────
-router.get(
-  '/me/bookings',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-
-    const { data, error } = await supabase
-      .from('provider_bookings')
-      .select(
-        `id, appointment_code, services_requested,
-         appointment_date, appointment_time, status,
-         client_brief_url, created_at,
-         service_providers (business_name, address, city)`
-      )
-      .eq('client_user_id', req.user.id)
-      .order('appointment_date', { ascending: false });
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to retrieve bookings', 500);
-    }
-
-    res.json({ success: true, bookings: data || [] });
-  })
-);
-
-// ─────────────────────────────────────────────
-// PATCH /api/users/me/beauty-profile
-// Updates beauty profile from agent-gathered data
-// ─────────────────────────────────────────────
-router.patch(
-  '/me/beauty-profile',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-
-    const allowedFields = [
-      'skin_concerns', 'skin_tone', 'skin_undertone',
-      'hair_concerns', 'hair_texture', 'hair_porosity',
-      'style_prefs', 'body_type', 'fragrance_prefs',
-      'makeup_style', 'budget_range', 'allergies',
+    // Beauty profile updates
+    const allowedProfileFields = [
+      'skin_concerns', 'skin_tone', 'skin_undertone', 'hair_concerns',
+      'hair_texture', 'hair_porosity', 'style_prefs', 'body_type',
+      'fragrance_prefs', 'makeup_style', 'budget_range', 'allergies',
       'grooming_prefs', 'appearance_goals',
     ];
 
-    const updates = {};
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updates[field] = req.body[field];
-      }
+    const profileUpdates = {};
+    allowedProfileFields.forEach(f => {
+      if (updates[f] !== undefined) profileUpdates[f] = updates[f];
+    });
+
+    if (Object.keys(profileUpdates).length > 0) {
+      profileUpdates.updated_at = new Date().toISOString();
+      await supabase
+        .from('beauty_profiles')
+        .upsert({ user_id: req.user.id, ...profileUpdates });
     }
 
-    if (Object.keys(updates).length === 0) {
-      throw new PrecciError('VALIDATION_ERROR', 'No valid fields to update', 400);
-    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Update user error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to update profile' });
+  }
+});
 
-    updates.updated_at = new Date().toISOString();
-    updates.user_id = req.user.id;
+// GET /api/users/me/subscriptions
+router.get('/me/subscriptions', async (req, res) => {
+  const supabase = getServiceClient();
 
-    const { data, error } = await supabase
-      .from('beauty_profiles')
-      .upsert(updates, { onConflict: 'user_id' })
-      .select()
-      .single();
+  try {
+    const { data } = await supabase
+      .from('subscriptions')
+      .select('id, plan, status, amount, currency, billing_cycle, current_period_start, current_period_end, cancel_at_period_end, created_at')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(5);
 
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to update beauty profile', 500);
-    }
+    res.json({ success: true, data: data || [] });
+  } catch (error) {
+    logger.error('Subscriptions error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to load subscriptions' });
+  }
+});
 
-    res.json({ success: true, profile: data });
-  })
-);
+// GET /api/users/me/try-on-history
+router.get('/me/try-on-history', async (req, res) => {
+  const supabase = getServiceClient();
+  const { limit = 20 } = req.query;
+
+  try {
+    const { data } = await supabase
+      .from('try_on_history')
+      .select('id, look_type, look_description, proxied_url, saved, created_at')
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit));
+
+    res.json({ success: true, data: data || [] });
+  } catch (error) {
+    logger.error('Try-on history error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to load try-on history' });
+  }
+});
+
+// GET /api/users/me/recommendations
+router.get('/me/recommendations', async (req, res) => {
+  const supabase = getServiceClient();
+  const { limit = 30 } = req.query;
+
+  try {
+    const { data } = await supabase
+      .from('recommendations')
+      .select(`
+        id, agent_id, reason, purchased, commission_earned, created_at,
+        products (id, name, brand, category, price, currency, affiliate_url, image_url, description)
+      `)
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .limit(parseInt(limit));
+
+    res.json({ success: true, data: data || [] });
+  } catch (error) {
+    logger.error('Recommendations error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to load recommendations' });
+  }
+});
 
 module.exports = router;

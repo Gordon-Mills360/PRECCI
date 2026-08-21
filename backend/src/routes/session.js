@@ -1,124 +1,140 @@
 // FILE: precci/backend/src/routes/session.js
-// Appearance session management routes.
-// SECURITY: Users access only their own sessions.
-// Camera frames never stored without consent.
+// CUTEME LTD — Session Management Routes
+// Create, update and close client sessions.
+// All session data stored in Supabase.
+// Sage data attached to every session.
 
 'use strict';
 
 const express = require('express');
+const router = express.Router();
+const { verifyJWT } = require('../middleware/auth');
+const { generalLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
-const { verifyToken } = require('../middleware/auth');
-const { asyncHandler, PrecciError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
-const router = express.Router();
+router.use(verifyJWT);
+router.use(generalLimiter);
 
-// ─────────────────────────────────────────────
-// POST /api/sessions
-// Creates a new appearance session
-// ─────────────────────────────────────────────
-router.post(
-  '/',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-    const { agentId, channel = 'pwa', cameraConsent = false } = req.body;
+// POST /api/session/start
+router.post('/start', async (req, res) => {
+  const supabase = getServiceClient();
+  const { sessionId, agentId = 'PC-026', channel = 'pwa' } = sanitiseInput(req.body);
 
-    if (!agentId) {
-      throw new PrecciError('VALIDATION_ERROR', 'agentId is required', 400);
-    }
+  if (!sessionId) {
+    return res.status(400).json({ success: false, error: 'sessionId is required' });
+  }
 
+  try {
     const { data, error } = await supabase
       .from('sessions')
       .insert({
+        id: sessionId,
         user_id: req.user.id,
         agent_id: agentId,
         channel,
-        camera_consent: cameraConsent,
         camera_used: false,
         completed: false,
-        recommendations: [],
+        created_at: new Date().toISOString(),
       })
-      .select('id, agent_id, channel, created_at')
+      .select('id, created_at')
       .single();
 
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to create session', 500);
-    }
+    if (error) throw error;
 
-    res.status(201).json({ success: true, session: data });
-  })
-);
+    res.json({ success: true, sessionId: data.id, startedAt: data.created_at });
+  } catch (error) {
+    logger.error('Session start error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to start session' });
+  }
+});
 
-// ─────────────────────────────────────────────
-// PATCH /api/sessions/:id/complete
-// Marks a session as completed with recommendations
-// ─────────────────────────────────────────────
-router.patch(
-  '/:id/complete',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-    const { recommendations = [], sageData = null, durationSeconds = null } = req.body;
+// PATCH /api/session/:sessionId
+// Update session — agent change, sage data, camera status
+router.patch('/:sessionId', async (req, res) => {
+  const supabase = getServiceClient();
+  const { sessionId } = req.params;
+  const updates = sanitiseInput(req.body);
 
-    // Verify session belongs to this user
-    const { data: existing } = await supabase
+  const allowedFields = ['agent_id', 'camera_used', 'camera_consent', 'sage_data', 'recommendations'];
+  const safeUpdates = {};
+  allowedFields.forEach(field => {
+    if (updates[field] !== undefined) safeUpdates[field] = updates[field];
+  });
+
+  safeUpdates.updated_at = new Date().toISOString();
+
+  try {
+    await supabase
       .from('sessions')
-      .select('id, user_id')
-      .eq('id', req.params.id)
-      .single();
+      .update(safeUpdates)
+      .eq('id', sessionId)
+      .eq('user_id', req.user.id);
 
-    if (!existing || existing.user_id !== req.user.id) {
-      throw new PrecciError('NOT_FOUND', 'Session not found', 404);
-    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Session update error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to update session' });
+  }
+});
 
-    const { data, error } = await supabase
+// POST /api/session/:sessionId/complete
+// Mark session as completed
+router.post('/:sessionId/complete', async (req, res) => {
+  const supabase = getServiceClient();
+  const { sessionId } = req.params;
+
+  try {
+    const completedAt = new Date();
+
+    // Get session start time to calculate duration
+    const { data: session } = await supabase
       .from('sessions')
-      .update({
-        completed: true,
-        recommendations,
-        sage_data: sageData,
-        duration_seconds: durationSeconds,
-      })
-      .eq('id', req.params.id)
-      .select('id, completed, created_at')
-      .single();
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to complete session', 500);
-    }
-
-    res.json({ success: true, session: data });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/sessions/:id
-// Returns a specific session — user must own it
-// ─────────────────────────────────────────────
-router.get(
-  '/:id',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-
-    const { data, error } = await supabase
-      .from('sessions')
-      .select(
-        `id, agent_id, channel, duration_seconds,
-         camera_used, recommendations, sage_data,
-         completed, created_at`
-      )
-      .eq('id', req.params.id)
+      .select('created_at')
+      .eq('id', sessionId)
       .eq('user_id', req.user.id)
       .single();
 
-    if (error || !data) {
-      throw new PrecciError('NOT_FOUND', 'Session not found', 404);
-    }
+    const durationSeconds = session?.created_at
+      ? Math.round((completedAt - new Date(session.created_at)) / 1000)
+      : null;
 
-    res.json({ success: true, session: data });
-  })
-);
+    await supabase
+      .from('sessions')
+      .update({
+        completed: true,
+        duration_seconds: durationSeconds,
+        updated_at: completedAt.toISOString(),
+      })
+      .eq('id', sessionId)
+      .eq('user_id', req.user.id);
+
+    res.json({ success: true, durationSeconds });
+  } catch (error) {
+    logger.error('Session complete error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to complete session' });
+  }
+});
+
+// GET /api/session/history
+// Client's session history
+router.get('/history', async (req, res) => {
+  const supabase = getServiceClient();
+  const { limit = 20, offset = 0 } = req.query;
+
+  try {
+    const { data, count } = await supabase
+      .from('sessions')
+      .select('id, agent_id, channel, duration_seconds, camera_used, completed, created_at', { count: 'exact' })
+      .eq('user_id', req.user.id)
+      .order('created_at', { ascending: false })
+      .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+    res.json({ success: true, data: data || [], total: count || 0 });
+  } catch (error) {
+    logger.error('Session history error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to load session history' });
+  }
+});
 
 module.exports = router;

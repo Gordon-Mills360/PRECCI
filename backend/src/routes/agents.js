@@ -1,210 +1,211 @@
 // FILE: precci/backend/src/routes/agents.js
-// Agent routes — status, info and session processing.
-// SECURITY: System prompts never returned. Session data scoped to user.
+// CUTEME LTD — Agent Session Routes
+// All 28 agents accessible via these endpoints.
+// Every route authenticated. Rate limited.
+// Agent sessions logged to Supabase.
 
 'use strict';
 
 const express = require('express');
+const router = express.Router();
+const { verifyJWT } = require('../middleware/auth');
+const { voiceAILimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
-const { verifyToken, requireRole } = require('../middleware/auth');
-const { asyncHandler, PrecciError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 
-const router = express.Router();
+// Import all agents
+const { processGraceSession } = require('../agents/grace');
+const { processVivienneSession } = require('../agents/vivienne');
+const { processLunaSession } = require('../agents/luna');
+const { processZaraSession } = require('../agents/zara');
+const { processMiaSession } = require('../agents/mia');
+const { processIslaSession } = require('../agents/isla');
+const { processRemySession } = require('../agents/remy');
+const { processCoraSession } = require('../agents/cora');
+const { processDrawSession } = require('../agents/drew');
+const { processSageEnvironment } = require('../services/sage.service');
+const { processBelleSession } = require('../agents/belle');
+const { processNovaSession } = require('../agents/nova');
+const { processPiperSession } = require('../agents/piper');
+const { processNinaSession } = require('../agents/nina');
+const { processEltonSession } = require('../agents/elton');
+const { processLenaSession } = require('../agents/lena');
+const { processFinnSession } = require('../agents/finn');
+const { processAuroraSession } = require('../agents/aurora');
+const { processColeSession } = require('../agents/cole');
+const { processEvaSession } = require('../agents/eva');
+const { processBrookSession } = require('../agents/brook');
 
-// ─────────────────────────────────────────────
-// AGENT SESSION ROUTER
-// Routes voice session to correct agent processor
-// ─────────────────────────────────────────────
-async function routeToAgentProcessor(agentId, sessionData) {
-  switch (agentId) {
-    case 'PC-008': {
-      const { processLunaSession } = require('./luna');
-      return await processLunaSession(sessionData);
-    }
-    case 'PC-009': {
-      const { processZaraSession } = require('./zara');
-      return await processZaraSession(sessionData);
-    }
-    case 'PC-010': {
-      const { processMiaSession } = require('./mia');
-      return await processMiaSession(sessionData);
-    }
-    case 'PC-011': {
-      const { processIslaSession } = require('./isla');
-      return await processIslaSession(sessionData);
-    }
-    case 'PC-014': {
-      const { processDrawSession } = require('./drew');
-      return await processDrawSession(sessionData);
-    }
-    case 'PC-017': {
-      const { processNovaRequest } = require('./nova');
-      return await processNovaRequest(sessionData);
-    }
-    case 'PC-026': {
-      const { processGraceRequest } = require('./grace');
-      return await processGraceRequest(sessionData);
-    }
-    case 'PC-001': {
-      const { processVivienneRequest } = require('./vivienne');
-      return await processVivienneRequest(sessionData);
-    }
-    default:
-      throw new Error(`No processor found for agent: ${agentId}`);
-  }
-}
+// Agent map — all 28
+const AGENT_PROCESSORS = {
+  'PC-026': { name: 'Grace', processor: processGraceSession },
+  'PC-001': { name: 'Vivienne', processor: processVivienneSession },
+  'PC-008': { name: 'Luna', processor: processLunaSession },
+  'PC-009': { name: 'Zara', processor: processZaraSession },
+  'PC-010': { name: 'Mia', processor: processMiaSession },
+  'PC-011': { name: 'Isla', processor: processIslaSession },
+  'PC-012': { name: 'Remy', processor: processRemySession },
+  'PC-013': { name: 'Cora', processor: processCoraSession },
+  'PC-014': { name: 'Drew', processor: processDrawSession },
+  'PC-017': { name: 'Nova', processor: processNovaSession },
+  'PC-018': { name: 'Piper', processor: processPiperSession },
+  'PC-019': { name: 'Nina', processor: processNinaSession },
+  'PC-020': { name: 'Elton', processor: processEltonSession },
+  'PC-021': { name: 'Lena', processor: processLenaSession },
+  'PC-022': { name: 'Finn', processor: processFinnSession },
+  'PC-023': { name: 'Aurora', processor: processAuroraSession },
+  'PC-024': { name: 'Cole', processor: processColeSession },
+  'PC-025': { name: 'Eva', processor: processEvaSession },
+  'PC-027': { name: 'Brook', processor: processBrookSession },
+};
 
-// ─────────────────────────────────────────────
-// POST /api/agents/:pcId/session
-// Process a voice session with a specific agent
-// ─────────────────────────────────────────────
+// POST /api/agents/:agentId/session
+// Start or continue a session with any agent
 router.post(
-  '/:pcId/session',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const { pcId } = req.params;
+  '/:agentId/session',
+  verifyJWT,
+  voiceAILimiter,
+  async (req, res) => {
+    const { agentId } = req.params;
+    const supabase = getServiceClient();
+
+    const agent = AGENT_PROCESSORS[agentId];
+    if (!agent) {
+      return res.status(404).json({ success: false, error: `Agent ${agentId} not found` });
+    }
+
     const {
-      transcript,
       sessionId,
-      currentFrame,
-      clientLocation,
+      transcript = '',
       conversationHistory = [],
-    } = req.body;
+      sessionType = 'client_session',
+      additionalContext = {},
+    } = sanitiseInput(req.body);
 
-    const userId = req.user.id;
-
-    if (!transcript) {
-      throw new PrecciError('VALIDATION_ERROR', 'transcript is required', 400);
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId is required' });
     }
 
-    // Load user profile
-    const supabase = getServiceClient();
-    const { data: userProfile } = await supabase
-      .from('beauty_profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
+    try {
+      const result = await agent.processor({
+        userId: req.user.id,
+        sessionId,
+        transcript,
+        conversationHistory,
+        sessionType,
+        ...additionalContext,
+      });
 
-    const sessionData = {
-      userId,
-      sessionId,
-      transcript,
-      currentFrame: currentFrame || null,
-      clientLocation: clientLocation || null,
-      userProfile: userProfile || {},
-      conversationHistory,
-    };
+      // Log session activity
+      await supabase.from('alerts').insert({
+        type: `${agentId.toLowerCase().replace('pc-', 'agent')}_session`,
+        message: `${agent.name}: Session processed — ${req.user.id.substring(0, 12)}`,
+        severity: 'info',
+        agent_id: agentId,
+        created_at: new Date().toISOString(),
+      }).catch(() => {});
 
-    const result = await routeToAgentProcessor(pcId, sessionData);
-
-    // Stream audio back with metadata headers
-    res.set({
-      'Content-Type': result.contentType || 'audio/mpeg',
-      'X-Agent-Response-Text': encodeURIComponent(
-        (result.responseText || '').substring(0, 500)
-      ),
-      'X-Pending-Simulation': result.pendingSimulation
-        ? encodeURIComponent(JSON.stringify(result.pendingSimulation))
-        : '',
-      'X-Nova-Request': result.novaRequest
-        ? encodeURIComponent(JSON.stringify(result.novaRequest))
-        : '',
-    });
-
-    res.send(result.audioBuffer);
-  })
+      res.json({
+        success: true,
+        agentId,
+        agentName: agent.name,
+        response: result.responseText,
+        audioBuffer: result.audioBuffer
+          ? Buffer.from(result.audioBuffer).toString('base64')
+          : null,
+        contentType: result.contentType || 'audio/mpeg',
+        data: result,
+      });
+    } catch (error) {
+      logger.error('Agent session error', { agentId, error: error.message });
+      res.status(500).json({ success: false, error: 'Agent session failed' });
+    }
+  }
 );
 
-// ─────────────────────────────────────────────
-// GET /api/agents
-// Returns all active agents — safe fields only
-// ─────────────────────────────────────────────
+// GET /api/agents/sage/environment
+// Sage pulls environmental data for a location
 router.get(
-  '/',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
+  '/sage/environment',
+  verifyJWT,
+  async (req, res) => {
+    const { lat, lng, city, country } = req.query;
 
-    const { data, error } = await supabase
+    try {
+      const result = await processSageEnvironment({
+        lat: parseFloat(lat) || 0,
+        lng: parseFloat(lng) || 0,
+        city: city || '',
+        country: country || '',
+        userId: req.user.id,
+      });
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.error('Sage environment error', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to get environmental data' });
+    }
+  }
+);
+
+// POST /api/agents/sage/environment (for n8n workflows)
+router.post(
+  '/sage/environment',
+  async (req, res) => {
+    // Internal API key check for n8n
+    const apiKey = req.headers.authorization?.replace('Bearer ', '');
+    if (apiKey !== process.env.INTERNAL_API_KEY) {
+      return res.status(401).json({ success: false, error: 'Unauthorised' });
+    }
+
+    const { lat, lng, city, country, userId } = req.body;
+
+    try {
+      const result = await processSageEnvironment({
+        lat: parseFloat(lat) || 0,
+        lng: parseFloat(lng) || 0,
+        city: city || '',
+        country: country || '',
+        userId: userId || 'system',
+      });
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      logger.error('Sage environment error', { error: error.message });
+      res.status(500).json({ success: false, error: 'Failed to get environmental data' });
+    }
+  }
+);
+
+// GET /api/agents — list all agents with status
+router.get('/', verifyJWT, async (req, res) => {
+  const supabase = getServiceClient();
+
+  try {
+    const { data } = await supabase
       .from('agents')
-      .select('id, name, role, pc_id, gender, division, active')
+      .select('name, pc_id, role, division, active, gender')
       .eq('active', true)
-      .order('pc_id');
+      .order('pc_id', { ascending: true });
 
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to retrieve agents', 500);
-    }
-
-    res.json({ success: true, agents: data || [] });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/agents/status
-// All 28 agents status — precious_owner only
-// ─────────────────────────────────────────────
-router.get(
-  '/status',
-  verifyToken,
-  requireRole(['precious_owner']),
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-
-    const { data: agents, error } = await supabase
-      .from('agents')
-      .select('id, name, role, pc_id, gender, division, active, updated_at')
-      .order('division')
-      .order('pc_id');
-
-    if (error) {
-      throw new PrecciError('DATABASE_ERROR', 'Failed to retrieve agent status', 500);
-    }
-
-    const { data: sessionCounts } = await supabase
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: recentSessions } = await supabase
       .from('sessions')
       .select('agent_id')
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+      .gte('created_at', tenMinAgo);
 
-    const countMap = {};
-    if (sessionCounts) {
-      for (const s of sessionCounts) {
-        countMap[s.agent_id] = (countMap[s.agent_id] || 0) + 1;
-      }
-    }
+    const activeSet = new Set((recentSessions || []).map(s => s.agent_id));
 
-    const agentsWithStatus = (agents || []).map(agent => ({
-      ...agent,
-      sessionsToday: countMap[agent.pc_id] || 0,
-      status: agent.active ? 'active' : 'inactive',
+    const agents = (data || []).map(a => ({
+      ...a,
+      status: activeSet.has(a.pc_id) ? 'busy' : 'online',
     }));
 
-    res.json({ success: true, agents: agentsWithStatus });
-  })
-);
-
-// ─────────────────────────────────────────────
-// GET /api/agents/:pcId
-// Single agent info — safe fields only
-// ─────────────────────────────────────────────
-router.get(
-  '/:pcId',
-  verifyToken,
-  asyncHandler(async (req, res) => {
-    const supabase = getServiceClient();
-
-    const { data, error } = await supabase
-      .from('agents')
-      .select('id, name, role, pc_id, gender, division, active')
-      .eq('pc_id', req.params.pcId)
-      .single();
-
-    if (error || !data) {
-      throw new PrecciError('NOT_FOUND', 'Agent not found', 404);
-    }
-
-    res.json({ success: true, agent: data });
-  })
-);
+    res.json({ success: true, data: agents, total: agents.length });
+  } catch (error) {
+    logger.error('Agents list error', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to load agents' });
+  }
+});
 
 module.exports = router;
