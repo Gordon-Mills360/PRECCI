@@ -91,7 +91,7 @@ function detectCommType(type, message) {
 
 function extractSenderReceiver(alert) {
   // Parse message like "AgentName → AnotherAgent: content"
-  const arrowMatch = alert.message?.match(/^([A-Za-z]+)\s*[→->]\s*([A-Za-z]+):/);
+  const arrowMatch = alert.message?.match(/^([A-Za-z]+)\s*(?:→|->)\s*([A-Za-z]+):/);
   if (arrowMatch) {
     const senderName = arrowMatch[1];
     const receiverName = arrowMatch[2];

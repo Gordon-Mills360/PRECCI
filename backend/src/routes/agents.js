@@ -8,8 +8,8 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyJWT } = require('../middleware/auth');
-const { voiceAILimiter, sanitiseInput } = require('../middleware/security');
+const { verifyToken } = require('../middleware/auth');
+const { voiceLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const logger = require('../utils/logger');
 
@@ -63,8 +63,8 @@ const AGENT_PROCESSORS = {
 // Start or continue a session with any agent
 router.post(
   '/:agentId/session',
-  verifyJWT,
-  voiceAILimiter,
+  verifyToken,
+    voiceLimiter,
   async (req, res) => {
     const { agentId } = req.params;
     const supabase = getServiceClient();
@@ -127,7 +127,7 @@ router.post(
 // Sage pulls environmental data for a location
 router.get(
   '/sage/environment',
-  verifyJWT,
+  verifyToken,
   async (req, res) => {
     const { lat, lng, city, country } = req.query;
 
@@ -178,7 +178,7 @@ router.post(
 );
 
 // GET /api/agents — list all agents with status
-router.get('/', verifyJWT, async (req, res) => {
+router.get('/', verifyToken, async (req, res) => {
   const supabase = getServiceClient();
 
   try {

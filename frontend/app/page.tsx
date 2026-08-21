@@ -190,20 +190,24 @@ export default function PWARoot() {
   useEffect(() => {
     if (!userId || appView === 'loading') return;
 
-    async function startSession() {
+        async function startSession() {
       const newSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
       setSessionId(newSessionId);
 
       // Log session start to Supabase
-      await supabase.from('sessions').insert({
-        id: newSessionId,
-        user_id: userId,
-        agent_id: 'PC-026', // Grace starts
-        channel: 'pwa',
-        camera_used: false,
-        completed: false,
-        created_at: new Date().toISOString(),
-      }).catch(() => {}); // Non-blocking
+      try {
+        await supabase.from('sessions').insert({
+          id: newSessionId,
+          user_id: userId,
+          agent_id: 'PC-026', // Grace starts
+          channel: 'pwa',
+          camera_used: false,
+          completed: false,
+          created_at: new Date().toISOString(),
+        });
+      } catch {
+        // Non-blocking
+      }
     }
 
     startSession();

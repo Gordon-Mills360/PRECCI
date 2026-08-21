@@ -9,7 +9,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyJWT, requireRole } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth');
 const { generalLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const { processPiperSession } = require('../agents/piper');
@@ -213,7 +213,7 @@ router.post('/aurora/invite-inner-circle', async (req, res) => {
 
 // GET /api/content/feed
 // Content log — for dashboard display
-router.get('/feed', verifyJWT, requireRole('precious_owner'), async (req, res) => {
+router.get('/feed', verifyToken, requireRole('precious_owner'), async (req, res) => {
   const supabase = getServiceClient();
   const { platform, type, limit = 50 } = req.query;
 

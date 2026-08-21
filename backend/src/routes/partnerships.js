@@ -11,14 +11,14 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyJWT, requireRole } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth');
 const { generalLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const { processColeSession } = require('../agents/cole');
 const { processRafaelSession } = require('../agents/rafael');
 const logger = require('../utils/logger');
 
-router.use(verifyJWT);
+router.use(verifyToken);
 router.use(generalLimiter);
 
 // POST /api/partnerships/inquiry

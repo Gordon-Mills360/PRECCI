@@ -9,7 +9,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyJWT, requireRole } = require('../middleware/auth');
+const { verifyToken, requireRole } = require('../middleware/auth');
 const { generalLimiter, bookingLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const { generateAppointmentCode } = require('../agents/brook');
@@ -263,7 +263,7 @@ router.post('/charge-registration', async (req, res) => {
 // GET /api/providers/:id
 // Get provider details
 // ─────────────────────────────────────────────
-router.get('/:id', verifyJWT, generalLimiter, async (req, res) => {
+router.get('/:id', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   try {
@@ -293,7 +293,7 @@ router.get('/:id', verifyJWT, generalLimiter, async (req, res) => {
 // PUT /api/providers/:id
 // Update provider profile
 // ─────────────────────────────────────────────
-router.put('/:id', verifyJWT, generalLimiter, async (req, res) => {
+router.put('/:id', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   // Verify ownership by email
@@ -338,7 +338,7 @@ router.put('/:id', verifyJWT, generalLimiter, async (req, res) => {
 // GET /api/providers/:id/bookings
 // Provider's bookings
 // ─────────────────────────────────────────────
-router.get('/:id/bookings', verifyJWT, generalLimiter, async (req, res) => {
+router.get('/:id/bookings', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   // Verify provider owns this ID
@@ -385,7 +385,7 @@ router.get('/:id/bookings', verifyJWT, generalLimiter, async (req, res) => {
 // GET /api/providers/:id/slots
 // Provider's availability slots
 // ─────────────────────────────────────────────
-router.get('/:id/slots', verifyJWT, generalLimiter, async (req, res) => {
+router.get('/:id/slots', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
   const { from, to } = req.query;
   const today = new Date().toISOString().split('T')[0];
@@ -413,7 +413,7 @@ router.get('/:id/slots', verifyJWT, generalLimiter, async (req, res) => {
 // POST /api/providers/:id/slots
 // Create availability slots
 // ─────────────────────────────────────────────
-router.post('/:id/slots', verifyJWT, generalLimiter, async (req, res) => {
+router.post('/:id/slots', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   const { data: provider } = await supabase
@@ -459,7 +459,7 @@ router.post('/:id/slots', verifyJWT, generalLimiter, async (req, res) => {
 // GET /api/providers/:id/revenue
 // Provider revenue summary
 // ─────────────────────────────────────────────
-router.get('/:id/revenue', verifyJWT, generalLimiter, async (req, res) => {
+router.get('/:id/revenue', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   const { data: provider } = await supabase
@@ -505,7 +505,7 @@ router.get('/:id/revenue', verifyJWT, generalLimiter, async (req, res) => {
 // POST /api/providers/verify-code
 // Verify appointment code when client arrives
 // ─────────────────────────────────────────────
-router.post('/verify-code', verifyJWT, bookingLimiter, async (req, res) => {
+router.post('/verify-code', verifyToken, bookingLimiter, async (req, res) => {
   const supabase = getServiceClient();
   const { appointmentCode } = sanitiseInput(req.body);
 

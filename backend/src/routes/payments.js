@@ -10,7 +10,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyJWT } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const { paymentLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const logger = require('../utils/logger');
@@ -25,7 +25,7 @@ const AFRICAN_COUNTRIES = ['GH','NG','KE','ZA','UG','TZ','RW','CM','CI','ET','SN
 
 // POST /api/payments/subscribe
 // Initiate subscription — returns checkout URL or success
-router.post('/subscribe', verifyJWT, paymentLimiter, async (req, res) => {
+router.post('/subscribe', verifyToken, paymentLimiter, async (req, res) => {
   const supabase = getServiceClient();
   const { plan, currency = 'USD', country } = sanitiseInput(req.body);
 

@@ -7,7 +7,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { verifyJWT } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const { generalLimiter, bookingLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const { generateAppointmentCode } = require('../agents/brook');
@@ -15,7 +15,7 @@ const logger = require('../utils/logger');
 
 // GET /api/connect/providers/search
 // Search providers near a location
-router.get('/providers/search', verifyJWT, generalLimiter, async (req, res) => {
+router.get('/providers/search', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
   const {
     serviceType,
@@ -132,7 +132,7 @@ router.get('/providers/search', verifyJWT, generalLimiter, async (req, res) => {
 
 // POST /api/connect/slots
 // Create availability slots for a provider
-router.post('/slots', verifyJWT, generalLimiter, async (req, res) => {
+router.post('/slots', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
   const { providerId, date, timeSlots } = sanitiseInput(req.body);
 
@@ -176,7 +176,7 @@ router.post('/slots', verifyJWT, generalLimiter, async (req, res) => {
 
 // GET /api/connect/revenue
 // Connect revenue summary for provider
-router.get('/revenue', verifyJWT, generalLimiter, async (req, res) => {
+router.get('/revenue', verifyToken, generalLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   const { data: provider } = await supabase

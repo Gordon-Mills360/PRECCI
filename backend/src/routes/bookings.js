@@ -12,12 +12,12 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const { bookingLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const logger = require('../utils/logger');
 
-router.use(verifyJWT);
+router.use(verifyToken);
 router.use(bookingLimiter);
 
 // ─────────────────────────────────────────────

@@ -10,7 +10,7 @@
 const express = require('express');
 const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
-const { verifyJWT } = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 const { cameraLimiter, sanitiseInput } = require('../middleware/security');
 const { getServiceClient } = require('../config/supabase');
 const { processSageEnvironment } = require('../services/sage.service');
@@ -18,7 +18,7 @@ const logger = require('../utils/logger');
 
 // POST /api/camera/analyse
 // Receive base64 frame → Claude Vision → return analysis
-router.post('/analyse', verifyJWT, cameraLimiter, async (req, res) => {
+router.post('/analyse', verifyToken, cameraLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   const {
@@ -171,7 +171,7 @@ router.post('/analyse', verifyJWT, cameraLimiter, async (req, res) => {
 
 // POST /api/camera/consent
 // Record camera consent for a session
-router.post('/consent', verifyJWT, async (req, res) => {
+router.post('/consent', verifyToken, async (req, res) => {
   const supabase = getServiceClient();
   const { sessionId, consent } = sanitiseInput(req.body);
 
