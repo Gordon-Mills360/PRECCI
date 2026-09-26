@@ -12,7 +12,7 @@ const router = express.Router();
 const Anthropic = require('@anthropic-ai/sdk');
 const { getServiceClient } = require('../config/supabase');
 const { synthesiseSpeech } = require('../config/elevenlabs');
-const { authLimiter, voiceAILimiter, sanitiseInput } = require('../middleware/security');
+const { authLimiter, sanitiseInput } = require('../middleware/security');
 const logger = require('../utils/logger');
 
 // Navigation command map — what Claude can return
@@ -36,7 +36,7 @@ const NAV_COMMANDS = {
 
 // POST /api/voice/jarvis
 // Precious speaks → Vivienne responds + dashboard navigates
-router.post('/', voiceAILimiter, async (req, res) => {
+router.post('/', authLimiter, async (req, res) => {
   const supabase = getServiceClient();
 
   const { transcript, sessionId } = sanitiseInput(req.body);
