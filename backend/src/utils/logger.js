@@ -105,17 +105,19 @@ if (process.env.NODE_ENV !== 'production') {
     })
   );
 } else {
+  // Production — Console transport so Render displays logs
+  // File transport removed — Render has no persistent filesystem
   logTransports.push(
-    new transports.File({
-      filename: path.join(__dirname, '../../logs/error.log'),
-      level: 'error',
-      maxsize: 10 * 1024 * 1024, // 10MB
-      maxFiles: 5,
-    }),
-    new transports.File({
-      filename: path.join(__dirname, '../../logs/combined.log'),
-      maxsize: 20 * 1024 * 1024, // 20MB
-      maxFiles: 10,
+    new transports.Console({
+      format: format.combine(
+        format.timestamp({ format: 'HH:mm:ss' }),
+        format.printf(({ timestamp, level, message, ...meta }) => {
+          const metaStr = Object.keys(meta).length
+            ? ' ' + JSON.stringify(meta)
+            : '';
+          return `[${timestamp}] ${level}: ${message}${metaStr}`;
+        })
+      ),
     })
   );
 }
