@@ -17,24 +17,41 @@ const { sanitiseInput, enforceRequestSizeLimits, generalLimiter } = require('./m
 // VALIDATE CRITICAL ENVIRONMENT VARIABLES
 // ─────────────────────────────────────────────
 function validateEnvironment() {
-  const required = [
+  // Critical — server cannot start without these
+  const critical = [
     'SUPABASE_URL',
     'SUPABASE_SERVICE_KEY',
     'SUPABASE_ANON_KEY',
     'JWT_SECRET',
     'JWT_REFRESH_SECRET',
     'ANTHROPIC_API_KEY',
+  ];
+
+  // Optional — warn but do not crash
+  const optional = [
     'ELEVENLABS_API_KEY',
     'OPENAI_API_KEY',
     'VAPI_API_KEY',
     'VAPI_WEBHOOK_SECRET',
+    'RESEND_API_KEY',
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+    'GOOGLE_MAPS_API_KEY',
+    'PAYSTACK_SECRET_KEY',
+    'STRIPE_SECRET_KEY',
+    'REPLICATE_API_TOKEN',
   ];
 
-  const missing = required.filter(key => !process.env[key]);
+  const missingCritical = critical.filter(k => !process.env[k]);
+  const missingOptional = optional.filter(k => !process.env[k]);
 
-  if (missing.length > 0) {
-    logger.error('CRITICAL: Missing required environment variables', { missing });
+  if (missingCritical.length > 0) {
+    logger.error('CRITICAL: Missing required environment variables', { missing: missingCritical });
     process.exit(1);
+  }
+
+  if (missingOptional.length > 0) {
+    logger.warn('Optional environment variables not set — some features disabled', { missing: missingOptional });
   }
 
   logger.info('Environment validation passed');
