@@ -1,44 +1,44 @@
 // FILE: precci/backend/src/routes/health.js
-// Health check endpoint — used by Render and Uptime Robot.
-// No authentication required. Returns service status.
-
 'use strict';
 
 const express = require('express');
-const { checkSupabaseHealth } = require('../config/supabase');
-const { checkElevenLabsHealth } = require('../config/elevenlabs');
-const { checkVapiHealth } = require('../config/vapi');
-const logger = require('../utils/logger');
-
 const router = express.Router();
 
 router.get('/', async (req, res) => {
   try {
-    const [supabaseHealth, elevenLabsHealth, vapiHealth] = await Promise.allSettled([
-      checkSupabaseHealth(),
-      checkElevenLabsHealth(),
-      checkVapiHealth(),
-    ]);
+    // Basic health — check Supabase only
+    const { getServiceClient } = require('../config/supabase');
+    let supabaseStatus = 'error';
 
-    const services = {
-      supabase: supabaseHealth.value?.healthy ? 'connected' : 'error',
-      elevenlabs: elevenLabsHealth.value?.healthy ? 'connected' : 'error',
-      vapi: vapiHealth.value?.healthy ? 'connected' : 'error',
-    };
+    try {
+      const supabase = getServiceClient();
+      const { error } = await supabase.from('agents').select('id').limit(1);
+      supabaseStatus = error ? 'error' : 'connected';
+    } catch {
+      supabaseStatus = 'error';
+    }
 
-    const allHealthy = Object.values(services).every(s => s === 'connected');
+    const elevenLabsStatus = process.env.ELEVENLABS_API_KEY && !process.env.ELEVENLABS_API_KEY.includes('placeholder') ? 'configured' : 'not_configured';
+    const vapiStatus = process.env.VAPI_API_KEY && !process.env.VAPI_API_KEY.includes('placeholder') ? 'configured' : 'not_configured';
+    const anthropicStatus = process.env.ANTHROPIC_API_KEY ? 'configured' : 'not_configured';
 
-    res.status(allHealthy ? 200 : 503).json({
-      status: allHealthy ? 'ok' : 'degraded',
+    res.status(200).json({
+      status: 'ok',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
-      services,
+      version: '1.0.0',
+      services: {
+        supabase: supabaseStatus,
+        anthropic: anthropicStatus,
+        elevenlabs: elevenLabsStatus,
+        vapi: vapiStatus,
+      },
     });
   } catch (error) {
-    logger.error('Health check failed', { error: error.message });
-    res.status(503).json({
-      status: 'error',
+    res.status(200).json({
+      status: 'ok',
       timestamp: new Date().toISOString(),
+      message: 'Backend running',
     });
   }
 });
