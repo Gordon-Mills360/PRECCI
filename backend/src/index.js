@@ -270,6 +270,11 @@ app.use(sanitiseInput);
 // ─────────────────────────────────────────────
 // HEALTH CHECK — no auth, no rate limit
 // ─────────────────────────────────────────────
+// TEMP: raw test route — remove after debugging
+app.get('/ping', (req, res) => {
+  res.json({ pong: true, time: new Date().toISOString() });
+});
+
 app.use('/health', healthRoutes);
 
 // ─────────────────────────────────────────────
