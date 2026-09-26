@@ -1,6 +1,18 @@
 // FILE: precci/backend/src/index.js
 'use strict';
 
+// Force errors to stdout — required for Render logging
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION at:', promise);
+  console.error('Reason:', reason);
+  process.exit(1);
+});
+
 require('dotenv').config();
 
 const express = require('express');
